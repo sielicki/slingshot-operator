@@ -346,8 +346,6 @@ spec:
     enabled: true
     sharingMode: shared
 `
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = exec.Command("echo", cxiDriverYAML).Stdout
 			_, err := utils.Run(exec.Command("sh", "-c", fmt.Sprintf("echo '%s' | kubectl apply -f -", cxiDriverYAML)))
 			Expect(err).NotTo(HaveOccurred())
 
@@ -362,7 +360,7 @@ spec:
 			Eventually(verifyRetryHandlerDS, 2*time.Minute, time.Second).Should(Succeed())
 
 			By("cleaning up the test CXIDriver")
-			cmd = exec.Command("kubectl", "delete", "cxidriver", "cxi-driver-rh-test", "-n", namespace)
+			cmd := exec.Command("kubectl", "delete", "cxidriver", "cxi-driver-rh-test", "-n", namespace)
 			_, _ = utils.Run(cmd)
 		})
 	})
