@@ -1,0 +1,53 @@
+name: Verify Code Generation
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify-codegen:
+    name: Verify generated code is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Generate manifests
+        run: make manifests
+
+      - name: Generate code
+        run: make generate
+
+      - name: Check for changes
+        run: |
+          if ! git diff --exit-code; then
+            echo "Generated files are out of date. Please run 'make manifests generate' and commit the changes."
+            exit 1
+          fi
+
+  verify-modules:
+    name: Verify go.mod is tidy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Tidy modules
+        run: go mod tidy
+
+      - name: Check for changes
+        run: |
+          if ! git diff --exit-code go.mod go.sum; then
+            echo "go.mod or go.sum is out of date. Please run 'go mod tidy' and commit the changes."
+            exit 1
+          fi

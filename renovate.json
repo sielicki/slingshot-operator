@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard",
+    "group:allNonMajor"
+  ],
+  "labels": ["dependencies"],
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 10,
+  "packageRules": [
+    {
+      "description": "Group Kubernetes dependencies",
+      "matchPackagePatterns": ["^k8s\\.io/", "^sigs\\.k8s\\.io/"],
+      "groupName": "kubernetes dependencies"
+    },
+    {
+      "description": "Group controller-runtime with its dependencies",
+      "matchPackagePatterns": ["controller-runtime", "controller-gen"],
+      "groupName": "controller-runtime"
+    },
+    {
+      "description": "Group GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "description": "Automerge patch updates for Go dependencies",
+      "matchUpdateTypes": ["patch"],
+      "matchManagers": ["gomod"],
+      "automerge": true
+    },
+    {
+      "description": "Automerge minor updates for GitHub Actions",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": ["github-actions"],
+      "automerge": true
+    },
+    {
+      "description": "Weekly updates for non-critical dependencies",
+      "matchUpdateTypes": ["minor", "patch"],
+      "schedule": ["before 9am on monday"],
+      "matchPackagePatterns": ["*"]
+    }
+  ],
+  "postUpdateOptions": ["gomodTidy"],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  },
+  "regexManagers": [
+    {
+      "description": "Update Go version in Dockerfile",
+      "fileMatch": ["^Dockerfile$"],
+      "matchStrings": ["FROM golang:(?<currentValue>\\d+\\.\\d+)"],
+      "depNameTemplate": "golang",
+      "datasourceTemplate": "docker"
+    },
+    {
+      "description": "Update golangci-lint version",
+      "fileMatch": ["\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": ["version: v(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases"
+    }
+  ]
+}

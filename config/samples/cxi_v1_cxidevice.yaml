@@ -1,0 +1,35 @@
+apiVersion: cxi.hpe.com/v1
+kind: CXIDevice
+metadata:
+  labels:
+    app.kubernetes.io/name: slingshot-operator
+    app.kubernetes.io/managed-by: kustomize
+    cxi.hpe.com/node: worker-01
+    cxi.hpe.com/numa-node: "0"
+  name: worker-01-cxi0
+spec: {}
+# Note: CXIDevice is auto-managed by the operator.
+# Status fields are populated by the device plugin and driver agent.
+# This sample shows what a typical CXIDevice looks like after discovery.
+#
+# status:
+#   node: worker-01
+#   device: cxi0
+#   type: pf
+#   pciAddress: "0000:41:00.0"
+#   numaNode: 0
+#   linkSpeed: "200Gbps"
+#   linkState: up
+#   driverVersion: "1.8.3"
+#   cassiniGeneration: 2
+#   retryHandler:
+#     enabled: true
+#     policy: default
+#     stats:
+#       totalRetries: 12345
+#       timeoutRetries: 100
+#       nackRetries: 12245
+#       pendingRetries: 3
+#   health:
+#     status: Healthy
+#     lastCheck: "2024-01-15T10:05:00Z"

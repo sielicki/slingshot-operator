@@ -1,0 +1,32 @@
+{{- if .Values.webhook.cxidriver.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "slingshot-operator.fullname" . }}-cxidriver
+  labels:
+    {{- include "slingshot-operator.labels" . | nindent 4 }}
+  annotations:
+    # cert-manager will inject the CA bundle
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "slingshot-operator.fullname" . }}-serving-cert
+webhooks:
+  - name: validate-cxidriver.slingshot.hpe.com
+    clientConfig:
+      service:
+        name: {{ include "slingshot-operator.fullname" . }}-webhook
+        namespace: {{ .Release.Namespace }}
+        path: /validate-cxi-hpe-com-v1-cxidriver
+    rules:
+      - operations:
+          - CREATE
+          - UPDATE
+        apiGroups:
+          - cxi.hpe.com
+        apiVersions:
+          - v1
+        resources:
+          - cxidrivers
+    failurePolicy: {{ .Values.webhook.cxidriver.failurePolicy | default "Fail" }}
+    sideEffects: None
+    admissionReviewVersions:
+      - v1
+{{- end }}

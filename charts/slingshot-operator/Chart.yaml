@@ -1,0 +1,19 @@
+apiVersion: v2
+name: slingshot-operator
+description: Kubernetes operator for HPE Slingshot CXI driver lifecycle management
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.26.0-0"
+home: https://github.com/sielicki/slingshot-operator
+sources:
+  - https://github.com/sielicki/slingshot-operator
+maintainers:
+  - name: sielicki
+keywords:
+  - hpe
+  - slingshot
+  - cxi
+  - hpc
+  - driver
+  - operator

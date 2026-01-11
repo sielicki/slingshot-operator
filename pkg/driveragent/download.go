@@ -1,0 +1,301 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package driveragent
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+func downloadFile(url, dest string) error {
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status: %d", resp.StatusCode)
+	}
+
+	out, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
+
+func downloadAndExtract(url, dest string) error {
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status: %d", resp.StatusCode)
+	}
+
+	// For zip files, we need to download to a temp file first (zip requires seeking)
+	if strings.HasSuffix(url, ".zip") {
+		tmpFile, err := os.CreateTemp("", "download-*.zip")
+		if err != nil {
+			return fmt.Errorf("failed to create temp file: %w", err)
+		}
+		tmpPath := tmpFile.Name()
+		defer os.Remove(tmpPath)
+
+		if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+			tmpFile.Close()
+			return fmt.Errorf("failed to download zip: %w", err)
+		}
+		tmpFile.Close()
+
+		return extractZip(tmpPath, dest)
+	}
+
+	var reader io.Reader = resp.Body
+
+	if strings.HasSuffix(url, ".gz") || strings.HasSuffix(url, ".tgz") {
+		gzReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	if strings.HasSuffix(url, ".tar") || strings.HasSuffix(url, ".tar.gz") || strings.HasSuffix(url, ".tgz") {
+		return extractTar(reader, dest)
+	}
+
+	return fmt.Errorf("unsupported archive format: %s", url)
+}
+
+func extractTar(reader io.Reader, dest string) error {
+	tarReader := tar.NewReader(reader)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("tar read error: %w", err)
+		}
+
+		target := filepath.Join(dest, header.Name)
+
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)) {
+			return fmt.Errorf("invalid tar path: %s", header.Name)
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
+				return fmt.Errorf("failed to create directory: %w", err)
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory: %w", err)
+			}
+
+			file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return fmt.Errorf("failed to create file: %w", err)
+			}
+
+			if _, err := io.Copy(file, tarReader); err != nil {
+				file.Close()
+				return fmt.Errorf("failed to write file: %w", err)
+			}
+			file.Close()
+		case tar.TypeSymlink:
+			if err := os.Symlink(header.Linkname, target); err != nil {
+				return fmt.Errorf("failed to create symlink: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func extractZip(zipPath, dest string) error {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return fmt.Errorf("failed to open zip: %w", err)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		target := filepath.Join(dest, f.Name)
+
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)) {
+			return fmt.Errorf("invalid zip path: %s", f.Name)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, f.Mode()); err != nil {
+				return fmt.Errorf("failed to create directory: %w", err)
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return fmt.Errorf("failed to create parent directory: %w", err)
+		}
+
+		outFile, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			return fmt.Errorf("failed to open zip entry: %w", err)
+		}
+
+		if _, err := io.Copy(outFile, rc); err != nil {
+			rc.Close()
+			outFile.Close()
+			return fmt.Errorf("failed to write file: %w", err)
+		}
+
+		rc.Close()
+		outFile.Close()
+	}
+
+	return nil
+}
+
+// extractVersionFromURL extracts a version string from a GitHub archive URL.
+// Supports formats like:
+//   - https://github.com/user/repo/archive/refs/tags/v1.2.3.zip -> "1.2.3"
+//   - https://github.com/user/repo/archive/refs/heads/main.zip -> "main"
+//   - https://github.com/user/repo/archive/v1.2.3.zip -> "1.2.3"
+func extractVersionFromURL(url string) string {
+	// Try to match tag format: /refs/tags/v1.2.3.zip or /refs/tags/1.2.3.zip
+	tagRegex := regexp.MustCompile(`/refs/tags/v?([^/]+)\.zip$`)
+	if matches := tagRegex.FindStringSubmatch(url); len(matches) > 1 {
+		return matches[1]
+	}
+
+	// Try to match branch format: /refs/heads/main.zip
+	branchRegex := regexp.MustCompile(`/refs/heads/([^/]+)\.zip$`)
+	if matches := branchRegex.FindStringSubmatch(url); len(matches) > 1 {
+		return matches[1]
+	}
+
+	// Try to match short format: /archive/v1.2.3.zip
+	shortRegex := regexp.MustCompile(`/archive/v?([^/]+)\.zip$`)
+	if matches := shortRegex.FindStringSubmatch(url); len(matches) > 1 {
+		return matches[1]
+	}
+
+	return "0.0.0"
+}
+
+// prepareDKMSSource processes a GitHub repository download for DKMS.
+// It handles:
+// 1. GitHub's nested directory structure (repo-branch/ or repo-tag/)
+// 2. Generating dkms.conf from dkms.conf.in with proper substitutions
+func prepareDKMSSource(sourcePath, packageName, packageVersion string) error {
+	// GitHub zips contain a single top-level directory like "repo-main/" or "repo-v1.0.0/"
+	// Find and flatten it
+	entries, err := os.ReadDir(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to read source directory: %w", err)
+	}
+
+	// If there's exactly one directory entry, it's likely the GitHub nested structure
+	if len(entries) == 1 && entries[0].IsDir() {
+		nestedDir := filepath.Join(sourcePath, entries[0].Name())
+
+		// Move contents up one level
+		nestedEntries, err := os.ReadDir(nestedDir)
+		if err != nil {
+			return fmt.Errorf("failed to read nested directory: %w", err)
+		}
+
+		for _, entry := range nestedEntries {
+			src := filepath.Join(nestedDir, entry.Name())
+			dst := filepath.Join(sourcePath, entry.Name())
+			if err := os.Rename(src, dst); err != nil {
+				return fmt.Errorf("failed to move %s: %w", entry.Name(), err)
+			}
+		}
+
+		// Remove the now-empty nested directory
+		if err := os.Remove(nestedDir); err != nil {
+			return fmt.Errorf("failed to remove nested directory: %w", err)
+		}
+	}
+
+	// Process dkms.conf.in if it exists
+	dkmsConfIn := filepath.Join(sourcePath, "dkms.conf.in")
+	dkmsConf := filepath.Join(sourcePath, "dkms.conf")
+
+	if _, err := os.Stat(dkmsConfIn); err == nil {
+		if err := generateDKMSConf(dkmsConfIn, dkmsConf, packageName, packageVersion); err != nil {
+			return fmt.Errorf("failed to generate dkms.conf: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// generateDKMSConf creates dkms.conf from dkms.conf.in by substituting template variables
+func generateDKMSConf(inPath, outPath, packageName, packageVersion string) error {
+	content, err := os.ReadFile(inPath)
+	if err != nil {
+		return fmt.Errorf("failed to read dkms.conf.in: %w", err)
+	}
+
+	result := string(content)
+	result = strings.ReplaceAll(result, "@PACKAGE_NAME@", packageName)
+	result = strings.ReplaceAll(result, "@PACKAGE_VERSION@", packageVersion)
+	result = strings.ReplaceAll(result, "@SHS_DKMS_AUX_DIR@", "/etc/shs-dkms")
+
+	if err := os.WriteFile(outPath, []byte(result), 0644); err != nil {
+		return fmt.Errorf("failed to write dkms.conf: %w", err)
+	}
+
+	return nil
+}

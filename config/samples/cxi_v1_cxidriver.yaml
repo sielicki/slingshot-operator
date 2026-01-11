@@ -1,0 +1,46 @@
+apiVersion: cxi.hpe.com/v1
+kind: CXIDriver
+metadata:
+  labels:
+    app.kubernetes.io/name: slingshot-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: cxi-driver
+spec:
+  version: "1.8.3"
+
+  source:
+    type: preinstalled
+
+  retryHandler:
+    enabled: true
+    mode: daemonset
+    image: ghcr.io/sielicki/slingshot-operator/retry-handler:latest
+    daemonset:
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "100m"
+        limits:
+          memory: "128Mi"
+          cpu: "200m"
+
+  devicePlugin:
+    enabled: true
+    resourceName: "hpe.com/cxi"
+    image: ghcr.io/sielicki/slingshot-operator/device-plugin:latest
+    sharingMode: shared
+    sharedCapacity: 100
+
+  metricsExporter:
+    enabled: true
+    image: ghcr.io/sielicki/slingshot-operator/metrics-exporter:latest
+    port: 9090
+
+  nodeSelector:
+    feature.node.kubernetes.io/pci-1590.present: "true"
+
+  updateStrategy:
+    type: RollingUpdate
+    maxUnavailable: "10%"
+    rollbackOnFailure: true
+    healthCheckTimeout: "5m"

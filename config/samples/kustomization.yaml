@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- cxi_v1_cxidriver.yaml
+- cxi_v1_cxidevice.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

@@ -1,0 +1,86 @@
+# Default values for slingshot-operator
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/sielicki/slingshot-operator/manager
+  tag: ""  # Defaults to appVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Leader election for HA deployments
+leaderElection:
+  enabled: true
+
+# Metrics configuration
+metrics:
+  enabled: true
+  port: 8443
+  # ServiceMonitor for Prometheus Operator
+  serviceMonitor:
+    enabled: false
+    # Additional labels for the ServiceMonitor
+    labels: {}
+    # Scrape interval
+    interval: 30s
+    # Scrape timeout
+    scrapeTimeout: 10s
+    # Metric relabeling configs
+    metricRelabelings: []
+    # Relabeling configs
+    relabelings: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container security context
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Webhook configuration
+webhook:
+  # CXIDriver validating webhook
+  cxidriver:
+    enabled: true
+    failurePolicy: Fail
+  # Sidecar injector webhook (enabled via --enable-sidecar-webhook flag)
+  sidecar:
+    enabled: false
+  # Webhook service port
+  port: 9443
+  # cert-manager Certificate resource
+  certManager:
+    enabled: true
+    # Certificate issuer reference
+    issuerRef:
+      name: selfsigned-issuer
+      kind: Issuer

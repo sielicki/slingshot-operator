@@ -1,0 +1,17 @@
+# Default owners for everything in the repo
+* @sielicki
+
+# API types require careful review
+/api/ @sielicki
+
+# Controller logic
+/internal/controller/ @sielicki
+
+# Device plugin and driver components
+/pkg/ @sielicki
+
+# CI/CD configuration
+/.github/ @sielicki
+
+# Deployment manifests
+/config/ @sielicki

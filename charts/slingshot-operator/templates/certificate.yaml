@@ -1,0 +1,29 @@
+{{- if and (or .Values.webhook.cxidriver.enabled .Values.webhook.sidecar.enabled) .Values.webhook.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "slingshot-operator.fullname" . }}-selfsigned-issuer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "slingshot-operator.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "slingshot-operator.fullname" . }}-serving-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "slingshot-operator.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ include "slingshot-operator.fullname" . }}-webhook
+    - {{ include "slingshot-operator.fullname" . }}-webhook.{{ .Release.Namespace }}
+    - {{ include "slingshot-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc
+    - {{ include "slingshot-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ include "slingshot-operator.fullname" . }}-selfsigned-issuer
+  secretName: {{ include "slingshot-operator.fullname" . }}-webhook-server-cert
+{{- end }}
