@@ -73,7 +73,8 @@ func main() {
 			"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&operatorNamespace, "namespace", config.GetEnv(config.EnvOperatorNamespace, config.DefaultNamespace),
 		"The namespace where the operator deploys DaemonSets and other managed resources.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", config.GetEnv("HEALTH_PROBE_BIND_ADDRESS", config.DefaultHealthProbeBindAddress),
+	defaultProbeAddr := config.GetEnv("HEALTH_PROBE_BIND_ADDRESS", config.DefaultHealthProbeBindAddress)
+	flag.StringVar(&probeAddr, "health-probe-bind-address", defaultProbeAddr,
 		"The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -93,7 +94,8 @@ func main() {
 		"Enable the mutating webhook for retry handler sidecar injection")
 	flag.BoolVar(&enableCXIDriverWebhook, "enable-cxidriver-webhook", config.GetEnvBool("ENABLE_CXIDRIVER_WEBHOOK", true),
 		"Enable the validating webhook for CXIDriver resources")
-	flag.StringVar(&retryHandlerImage, "retry-handler-image", config.GetEnv("RETRY_HANDLER_IMAGE", config.DefaultRetryHandlerImage),
+	defaultRHImage := config.GetEnv("RETRY_HANDLER_IMAGE", config.DefaultRetryHandlerImage)
+	flag.StringVar(&retryHandlerImage, "retry-handler-image", defaultRHImage,
 		"Image to use for retry handler sidecar containers")
 	opts := zap.Options{
 		Development: true,

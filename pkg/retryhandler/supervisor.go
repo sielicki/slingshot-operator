@@ -223,7 +223,7 @@ func (s *Supervisor) GetStatus() []HandlerStatus {
 	s.handlersMu.RLock()
 	defer s.handlersMu.RUnlock()
 
-	var statuses []HandlerStatus
+	statuses := make([]HandlerStatus, 0, len(s.handlers))
 	for _, h := range s.handlers {
 		h.mu.Lock()
 		status := HandlerStatus{
@@ -266,34 +266,34 @@ func (s *Supervisor) runHealthServer() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if s.IsHealthy() {
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, "ok")
+			_, _ = fmt.Fprintln(w, "ok")
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprintln(w, "unhealthy")
+			_, _ = fmt.Fprintln(w, "unhealthy")
 		}
 	})
 
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "ready")
+		_, _ = fmt.Fprintln(w, "ready")
 	})
 
-	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/status", func(w http.ResponseWriter, _ *http.Request) {
 		statuses := s.GetStatus()
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, "{\n  \"handlers\": [\n")
+		_, _ = fmt.Fprintf(w, "{\n  \"handlers\": [\n")
 		for i, status := range statuses {
-			fmt.Fprintf(w, "    {\"device\": %q, \"running\": %v, \"pid\": %d, \"restarts\": %d}",
+			_, _ = fmt.Fprintf(w, "    {\"device\": %q, \"running\": %v, \"pid\": %d, \"restarts\": %d}",
 				status.Device, status.Running, status.PID, status.RestartCount)
 			if i < len(statuses)-1 {
-				fmt.Fprint(w, ",")
+				_, _ = fmt.Fprint(w, ",")
 			}
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 		}
-		fmt.Fprintf(w, "  ],\n  \"healthy\": %v\n}\n", s.IsHealthy())
+		_, _ = fmt.Fprintf(w, "  ],\n  \"healthy\": %v\n}\n", s.IsHealthy())
 	})
 
 	server := &http.Server{
@@ -305,7 +305,7 @@ func (s *Supervisor) runHealthServer() {
 		<-s.stopCh
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		server.Shutdown(ctx)
+		_ = server.Shutdown(ctx)
 	}()
 
 	s.log.Info("Health server listening", "port", s.healthPort)

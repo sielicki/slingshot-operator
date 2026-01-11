@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:goconst // test data strings are intentionally repeated
 package metrics
 
 import (
@@ -45,7 +46,7 @@ func TestHttpRetryHandlerClient_GetStatus_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -98,9 +99,9 @@ func TestHttpRetryHandlerClient_GetStatus_ServerError(t *testing.T) {
 }
 
 func TestHttpRetryHandlerClient_GetStatus_InvalidJSON(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("not valid json"))
+		_, _ = w.Write([]byte("not valid json"))
 	}))
 	defer server.Close()
 
@@ -128,13 +129,13 @@ func TestHttpRetryHandlerClient_GetStatus_ConnectionError(t *testing.T) {
 }
 
 func TestHttpRetryHandlerClient_GetStatus_EmptyHandlers(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := retryHandlerStatusResponse{
 			Handlers: nil,
 			Healthy:  true,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -152,10 +153,10 @@ func TestHttpRetryHandlerClient_GetStatus_EmptyHandlers(t *testing.T) {
 
 func TestHttpRetryHandlerClient_ClientReuse(t *testing.T) {
 	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		callCount++
 		resp := retryHandlerStatusResponse{Healthy: true}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -225,7 +226,7 @@ func TestRetryHandlerStatusResponse_EmptyJSON(t *testing.T) {
 		t.Fatalf("failed to parse JSON: %v", err)
 	}
 
-	if resp.Handlers != nil && len(resp.Handlers) != 0 {
+	if len(resp.Handlers) != 0 {
 		t.Errorf("got %d handlers, want 0", len(resp.Handlers))
 	}
 	if resp.Healthy {

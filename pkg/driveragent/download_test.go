@@ -32,9 +32,9 @@ import (
 
 func TestDownloadFile_Success(t *testing.T) {
 	content := []byte("test file content")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(content)
+		_, _ = w.Write(content)
 	}))
 	defer server.Close()
 
@@ -54,7 +54,7 @@ func TestDownloadFile_Success(t *testing.T) {
 }
 
 func TestDownloadFile_NotFound(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -70,7 +70,7 @@ func TestDownloadFile_NotFound(t *testing.T) {
 }
 
 func TestDownloadFile_ServerError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -84,8 +84,8 @@ func TestDownloadFile_ServerError(t *testing.T) {
 
 func TestDownloadFile_CreatesDirectory(t *testing.T) {
 	content := []byte("test content")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(content)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(content)
 	}))
 	defer server.Close()
 
@@ -300,11 +300,11 @@ func TestDownloadAndExtract_TarGz(t *testing.T) {
 	if _, err := tw.Write(fileContent); err != nil {
 		t.Fatal(err)
 	}
-	tw.Close()
-	gw.Close()
+	_ = tw.Close()
+	_ = gw.Close()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(buf.Bytes())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(buf.Bytes())
 	}))
 	defer server.Close()
 
@@ -341,11 +341,11 @@ func TestDownloadAndExtract_Tgz(t *testing.T) {
 	if _, err := tw.Write(fileContent); err != nil {
 		t.Fatal(err)
 	}
-	tw.Close()
-	gw.Close()
+	_ = tw.Close()
+	_ = gw.Close()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(buf.Bytes())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(buf.Bytes())
 	}))
 	defer server.Close()
 
@@ -361,8 +361,8 @@ func TestDownloadAndExtract_Tgz(t *testing.T) {
 }
 
 func TestDownloadAndExtract_UnsupportedFormat(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not an archive"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not an archive"))
 	}))
 	defer server.Close()
 
@@ -377,7 +377,7 @@ func TestDownloadAndExtract_UnsupportedFormat(t *testing.T) {
 }
 
 func TestDownloadAndExtract_HTTPError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -390,8 +390,8 @@ func TestDownloadAndExtract_HTTPError(t *testing.T) {
 }
 
 func TestDownloadAndExtract_InvalidGzip(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not valid gzip data"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not valid gzip data"))
 	}))
 	defer server.Close()
 
@@ -412,13 +412,13 @@ func TestDownloadAndExtract_CreatesDirectory(t *testing.T) {
 		Mode: 0644,
 		Size: 4,
 	}
-	tw.WriteHeader(hdr)
-	tw.Write([]byte("test"))
-	tw.Close()
-	gw.Close()
+	_ = tw.WriteHeader(hdr)
+	_, _ = tw.Write([]byte("test"))
+	_ = tw.Close()
+	_ = gw.Close()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(buf.Bytes())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(buf.Bytes())
 	}))
 	defer server.Close()
 
@@ -490,7 +490,7 @@ func createTestZip(t *testing.T, files map[string]string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tmpFile.Close()
+	defer func() { _ = tmpFile.Close() }()
 
 	zw := zip.NewWriter(tmpFile)
 	for name, content := range files {
@@ -539,15 +539,15 @@ func TestExtractZip_PathTraversalPrevention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tmpFile.Close()
+	defer func() { _ = tmpFile.Close() }()
 
 	zw := zip.NewWriter(tmpFile)
 	w, err := zw.Create("../../../etc/passwd")
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.Write([]byte("evil"))
-	zw.Close()
+	_, _ = w.Write([]byte("evil"))
+	_ = zw.Close()
 
 	dest := t.TempDir()
 	err = extractZip(tmpFile.Name(), dest)
@@ -569,11 +569,11 @@ func TestDownloadAndExtract_Zip(t *testing.T) {
 		t.Fatal(err)
 	}
 	fileContent := []byte("zip content")
-	w.Write(fileContent)
-	zw.Close()
+	_, _ = w.Write(fileContent)
+	_ = zw.Close()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(buf.Bytes())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(buf.Bytes())
 	}))
 	defer server.Close()
 
@@ -594,8 +594,8 @@ func TestDownloadAndExtract_Zip(t *testing.T) {
 
 func TestExtractVersionFromURL(t *testing.T) {
 	tests := []struct {
-		url     string
-		want    string
+		url  string
+		want string
 	}{
 		// Tag formats
 		{"https://github.com/user/repo/archive/refs/tags/v1.2.3.zip", "1.2.3"},

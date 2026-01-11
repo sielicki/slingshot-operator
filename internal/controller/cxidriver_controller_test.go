@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,7 +40,8 @@ func reconcileUntilDone(ctx context.Context, r *CXIDriverReconciler, req reconci
 		if err != nil {
 			return err
 		}
-		if !result.Requeue {
+		//nolint:staticcheck // Requeue is not fully deprecated, still valid for immediate requeue
+		if !result.Requeue && result.RequeueAfter == 0 {
 			return nil
 		}
 	}
@@ -349,7 +351,9 @@ var _ = Describe("CXIDriver Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+			//nolint:staticcheck // Requeue check is still valid
 			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
 		})
 	})
 

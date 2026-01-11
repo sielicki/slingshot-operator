@@ -950,6 +950,7 @@ func (r *CXIDriverReconciler) updateStatusRetryOnConflict(ctx context.Context, c
 	})
 }
 
+//nolint:unparam // req may be needed for future logging/context
 func (r *CXIDriverReconciler) updateStatusWithRetry(ctx context.Context, req ctrl.Request, cxiDriver *cxiv1.CXIDriver) (ctrl.Result, error) {
 	cxiDriver.Status.ObservedGeneration = cxiDriver.Generation
 	if err := r.updateStatusRetryOnConflict(ctx, cxiDriver); err != nil {

@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:goconst // test data strings are intentionally repeated
 package deviceplugin
 
 import (
@@ -27,28 +28,28 @@ func TestDiscoverDevice(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	tests := []struct {
-		name         string
-		deviceName   string
-		setup        func(sysPath string)
-		wantPCI      string
-		wantNUMA     int
-		wantLink     string
-		wantErr      bool
+		name       string
+		deviceName string
+		setup      func(sysPath string)
+		wantPCI    string
+		wantNUMA   int
+		wantLink   string
+		wantErr    bool
 	}{
 		{
 			name:       "device with all attributes",
 			deviceName: "cxi0",
 			setup: func(sysPath string) {
 				deviceDir := filepath.Join(sysPath, "device")
-				os.MkdirAll(deviceDir, 0755)
+				_ = os.MkdirAll(deviceDir, 0755)
 				// Create device symlink target
 				pciDir := filepath.Join(tmpDir, "pci", "0000:41:00.0")
-				os.MkdirAll(pciDir, 0755)
-				os.Symlink(pciDir, filepath.Join(sysPath, "device"))
+				_ = os.MkdirAll(pciDir, 0755)
+				_ = os.Symlink(pciDir, filepath.Join(sysPath, "device"))
 				// NUMA node
-				os.WriteFile(filepath.Join(deviceDir, "numa_node"), []byte("1\n"), 0644)
+				_ = os.WriteFile(filepath.Join(deviceDir, "numa_node"), []byte("1\n"), 0644)
 				// Link state at device level
-				os.WriteFile(filepath.Join(sysPath, "link_state"), []byte("up\n"), 0644)
+				_ = os.WriteFile(filepath.Join(sysPath, "link_state"), []byte("up\n"), 0644)
 			},
 			wantPCI:  "0000:41:00.0",
 			wantNUMA: 1,
@@ -58,8 +59,8 @@ func TestDiscoverDevice(t *testing.T) {
 			name:       "device missing PCI symlink",
 			deviceName: "cxi1",
 			setup: func(sysPath string) {
-				os.MkdirAll(sysPath, 0755)
-				os.WriteFile(filepath.Join(sysPath, "link_state"), []byte("down\n"), 0644)
+				_ = os.MkdirAll(sysPath, 0755)
+				_ = os.WriteFile(filepath.Join(sysPath, "link_state"), []byte("down\n"), 0644)
 			},
 			wantPCI:  "",
 			wantNUMA: -1,
@@ -70,8 +71,8 @@ func TestDiscoverDevice(t *testing.T) {
 			deviceName: "cxi2",
 			setup: func(sysPath string) {
 				deviceDir := filepath.Join(sysPath, "device")
-				os.MkdirAll(deviceDir, 0755)
-				os.WriteFile(filepath.Join(sysPath, "link_state"), []byte("up\n"), 0644)
+				_ = os.MkdirAll(deviceDir, 0755)
+				_ = os.WriteFile(filepath.Join(sysPath, "link_state"), []byte("up\n"), 0644)
 			},
 			wantPCI:  "",
 			wantNUMA: -1,
@@ -82,9 +83,9 @@ func TestDiscoverDevice(t *testing.T) {
 			deviceName: "cxi3",
 			setup: func(sysPath string) {
 				deviceDir := filepath.Join(sysPath, "device")
-				os.MkdirAll(deviceDir, 0755)
-				os.WriteFile(filepath.Join(deviceDir, "link_state"), []byte("down\n"), 0644)
-				os.WriteFile(filepath.Join(deviceDir, "numa_node"), []byte("0\n"), 0644)
+				_ = os.MkdirAll(deviceDir, 0755)
+				_ = os.WriteFile(filepath.Join(deviceDir, "link_state"), []byte("down\n"), 0644)
+				_ = os.WriteFile(filepath.Join(deviceDir, "numa_node"), []byte("0\n"), 0644)
 			},
 			wantPCI:  "",
 			wantNUMA: 0,
@@ -95,8 +96,8 @@ func TestDiscoverDevice(t *testing.T) {
 			deviceName: "cxi4",
 			setup: func(sysPath string) {
 				deviceDir := filepath.Join(sysPath, "device")
-				os.MkdirAll(deviceDir, 0755)
-				os.WriteFile(filepath.Join(deviceDir, "numa_node"), []byte("invalid\n"), 0644)
+				_ = os.MkdirAll(deviceDir, 0755)
+				_ = os.WriteFile(filepath.Join(deviceDir, "numa_node"), []byte("invalid\n"), 0644)
 			},
 			wantPCI:  "",
 			wantNUMA: -1,
@@ -106,7 +107,7 @@ func TestDiscoverDevice(t *testing.T) {
 			name:       "device missing all attributes",
 			deviceName: "cxi5",
 			setup: func(sysPath string) {
-				os.MkdirAll(sysPath, 0755)
+				_ = os.MkdirAll(sysPath, 0755)
 			},
 			wantPCI:  "",
 			wantNUMA: -1,
@@ -118,7 +119,7 @@ func TestDiscoverDevice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create device directory
 			sysPath := filepath.Join(tmpDir, "sys", "class", "cxi", tt.deviceName)
-			os.MkdirAll(sysPath, 0755)
+			_ = os.MkdirAll(sysPath, 0755)
 
 			// Run setup
 			tt.setup(sysPath)

@@ -133,10 +133,10 @@ type RetryHandlerClient interface {
 }
 
 type Config struct {
-	NodeName           string
-	MetricsPort        int
-	ScrapeInterval     time.Duration
-	RetryHandlerURL    string
+	NodeName        string
+	MetricsPort     int
+	ScrapeInterval  time.Duration
+	RetryHandlerURL string
 }
 
 type Exporter struct {
@@ -146,8 +146,8 @@ type Exporter struct {
 	wg       sync.WaitGroup
 	rhClient RetryHandlerClient
 
-	mu                   sync.RWMutex
-	lastRestartCounts    map[string]int
+	mu                sync.RWMutex
+	lastRestartCounts map[string]int
 }
 
 func NewExporter(config Config) *Exporter {
@@ -205,6 +205,7 @@ func (e *Exporter) runScraper(ctx context.Context) {
 	}
 }
 
+//nolint:unparam // ctx reserved for cancellation support
 func (e *Exporter) scrape(ctx context.Context) {
 	e.scrapeDevices()
 	e.scrapeDriverStatus()
@@ -292,14 +293,14 @@ func (e *Exporter) runMetricsServer() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "ok")
+		_, _ = fmt.Fprintln(w, "ok")
 	})
 
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "ready")
+		_, _ = fmt.Fprintln(w, "ready")
 	})
 
 	server := &http.Server{
@@ -311,7 +312,7 @@ func (e *Exporter) runMetricsServer() {
 		<-e.stopCh
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		server.Shutdown(ctx)
+		_ = server.Shutdown(ctx)
 	}()
 
 	e.log.Info("Metrics server listening", "port", e.config.MetricsPort)

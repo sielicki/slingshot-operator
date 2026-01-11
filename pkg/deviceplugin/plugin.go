@@ -162,9 +162,9 @@ func (p *CXIDevicePlugin) Stop() {
 	if p.healthServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		p.healthServer.Shutdown(ctx)
+		_ = p.healthServer.Shutdown(ctx)
 	}
-	os.Remove(p.socketPath)
+	_ = os.Remove(p.socketPath)
 }
 
 func (p *CXIDevicePlugin) setReady(ready bool) {
@@ -182,18 +182,18 @@ func (p *CXIDevicePlugin) isReady() bool {
 func (p *CXIDevicePlugin) runHealthServer() {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "ok")
+		_, _ = fmt.Fprintln(w, "ok")
 	})
 
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		if p.isReady() {
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, "ready")
+			_, _ = fmt.Fprintln(w, "ready")
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprintln(w, "not ready")
+			_, _ = fmt.Fprintln(w, "not ready")
 		}
 	})
 
@@ -219,7 +219,7 @@ func (p *CXIDevicePlugin) waitForServer(ctx context.Context) error {
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
 			)
 			if err == nil {
-				conn.Close()
+				_ = conn.Close()
 				return nil
 			}
 			time.Sleep(100 * time.Millisecond)
@@ -235,7 +235,7 @@ func (p *CXIDevicePlugin) register() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to kubelet: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := pluginapi.NewRegistrationClient(conn)
 	req := &pluginapi.RegisterRequest{
@@ -257,6 +257,8 @@ func (p *CXIDevicePlugin) register() error {
 }
 
 // GetDevicePluginOptions returns options for the device plugin
+//
+//nolint:lll // gRPC interface signature
 func (p *CXIDevicePlugin) GetDevicePluginOptions(ctx context.Context, empty *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
 	return &pluginapi.DevicePluginOptions{
 		PreStartRequired:                false,
@@ -354,6 +356,8 @@ func (p *CXIDevicePlugin) buildDeviceList() *pluginapi.ListAndWatchResponse {
 
 // GetPreferredAllocation returns preferred device allocation for topology awareness.
 // It tries to allocate devices from the same NUMA node when possible.
+//
+//nolint:lll // gRPC interface signature
 func (p *CXIDevicePlugin) GetPreferredAllocation(ctx context.Context, req *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
 	response := &pluginapi.PreferredAllocationResponse{}
 
@@ -473,6 +477,8 @@ func (p *CXIDevicePlugin) buildNUMAMap() map[string]int {
 }
 
 // Allocate handles device allocation requests
+//
+//nolint:lll // gRPC interface signature
 func (p *CXIDevicePlugin) Allocate(ctx context.Context, req *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	fmt.Printf("Allocate called with %d container requests\n", len(req.ContainerRequests))
 
@@ -529,6 +535,8 @@ func (p *CXIDevicePlugin) Allocate(ctx context.Context, req *pluginapi.AllocateR
 }
 
 // PreStartContainer is called before container starts (not used)
+//
+//nolint:lll // gRPC interface signature
 func (p *CXIDevicePlugin) PreStartContainer(ctx context.Context, req *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
 	return &pluginapi.PreStartContainerResponse{}, nil
 }

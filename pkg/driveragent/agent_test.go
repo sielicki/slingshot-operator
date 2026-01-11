@@ -160,9 +160,9 @@ func TestGetDevices(t *testing.T) {
 func TestHealthServer_Healthz(t *testing.T) {
 	_ = NewAgent(Config{}) // Verify agent creation works
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "ok\n")
+		_, _ = io.WriteString(w, "ok\n")
 	})
 
 	req := httptest.NewRequest("GET", "/healthz", nil)
@@ -182,16 +182,16 @@ func TestHealthServer_Readyz_Ready(t *testing.T) {
 	agent := NewAgent(Config{})
 	agent.setDriverReady(true)
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if agent.IsReady() {
 			w.WriteHeader(http.StatusOK)
-			io.WriteString(w, "ready\n")
+			_, _ = io.WriteString(w, "ready\n")
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			agent.mu.RLock()
 			lastErr := agent.lastError
 			agent.mu.RUnlock()
-			io.WriteString(w, "not ready: "+lastErr+"\n")
+			_, _ = io.WriteString(w, "not ready: "+lastErr+"\n")
 		}
 	})
 
@@ -209,16 +209,16 @@ func TestHealthServer_Readyz_NotReady(t *testing.T) {
 	agent := NewAgent(Config{})
 	agent.setError(io.EOF)
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if agent.IsReady() {
 			w.WriteHeader(http.StatusOK)
-			io.WriteString(w, "ready\n")
+			_, _ = io.WriteString(w, "ready\n")
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			agent.mu.RLock()
 			lastErr := agent.lastError
 			agent.mu.RUnlock()
-			io.WriteString(w, "not ready: "+lastErr+"\n")
+			_, _ = io.WriteString(w, "not ready: "+lastErr+"\n")
 		}
 	})
 
@@ -260,7 +260,7 @@ func TestHealthServer_Status(t *testing.T) {
 			resp["lastError"] = lastErr
 		}
 
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	req := httptest.NewRequest("GET", "/status", nil)

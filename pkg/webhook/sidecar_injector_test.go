@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:goconst // test data strings are intentionally repeated
 package webhook
 
 import (
@@ -798,7 +799,7 @@ func TestContainerRequestsCXI(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "empty resources",
+			name:      "empty resources",
 			resources: corev1.ResourceRequirements{},
 			want:      false,
 		},

@@ -31,7 +31,7 @@ func isModuleLoaded(name string) bool {
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -67,7 +67,7 @@ func (c *httpRetryHandlerClient) GetStatus() ([]RetryHandlerStatus, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get retry handler status: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -78,7 +78,7 @@ func (c *httpRetryHandlerClient) GetStatus() ([]RetryHandlerStatus, error) {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	var statuses []RetryHandlerStatus
+	statuses := make([]RetryHandlerStatus, 0, len(statusResp.Handlers))
 	for _, h := range statusResp.Handlers {
 		statuses = append(statuses, RetryHandlerStatus{
 			Device:       h.Device,

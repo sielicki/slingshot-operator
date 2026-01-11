@@ -38,7 +38,7 @@ func downloadFile(url, dest string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed with status: %d", resp.StatusCode)
@@ -48,7 +48,7 @@ func downloadFile(url, dest string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	if _, err := io.Copy(out, resp.Body); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
@@ -66,7 +66,7 @@ func downloadAndExtract(url, dest string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed with status: %d", resp.StatusCode)
@@ -79,13 +79,13 @@ func downloadAndExtract(url, dest string) error {
 			return fmt.Errorf("failed to create temp file: %w", err)
 		}
 		tmpPath := tmpFile.Name()
-		defer os.Remove(tmpPath)
+		defer func() { _ = os.Remove(tmpPath) }()
 
 		if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-			tmpFile.Close()
+			_ = tmpFile.Close()
 			return fmt.Errorf("failed to download zip: %w", err)
 		}
-		tmpFile.Close()
+		_ = tmpFile.Close()
 
 		return extractZip(tmpPath, dest)
 	}
@@ -97,7 +97,7 @@ func downloadAndExtract(url, dest string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create gzip reader: %w", err)
 		}
-		defer gzReader.Close()
+		defer func() { _ = gzReader.Close() }()
 		reader = gzReader
 	}
 
@@ -142,10 +142,10 @@ func extractTar(reader io.Reader, dest string) error {
 			}
 
 			if _, err := io.Copy(file, tarReader); err != nil {
-				file.Close()
+				_ = file.Close()
 				return fmt.Errorf("failed to write file: %w", err)
 			}
-			file.Close()
+			_ = file.Close()
 		case tar.TypeSymlink:
 			if err := os.Symlink(header.Linkname, target); err != nil {
 				return fmt.Errorf("failed to create symlink: %w", err)
@@ -161,7 +161,7 @@ func extractZip(zipPath, dest string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open zip: %w", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
 		target := filepath.Join(dest, f.Name)
@@ -188,18 +188,18 @@ func extractZip(zipPath, dest string) error {
 
 		rc, err := f.Open()
 		if err != nil {
-			outFile.Close()
+			_ = outFile.Close()
 			return fmt.Errorf("failed to open zip entry: %w", err)
 		}
 
 		if _, err := io.Copy(outFile, rc); err != nil {
-			rc.Close()
-			outFile.Close()
+			_ = rc.Close()
+			_ = outFile.Close()
 			return fmt.Errorf("failed to write file: %w", err)
 		}
 
-		rc.Close()
-		outFile.Close()
+		_ = rc.Close()
+		_ = outFile.Close()
 	}
 
 	return nil

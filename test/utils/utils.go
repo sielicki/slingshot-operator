@@ -170,4 +170,3 @@ func GetProjectDir() (string, error) {
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 	return wd, nil
 }
-

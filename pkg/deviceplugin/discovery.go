@@ -74,7 +74,7 @@ func DiscoverDevices() ([]*CXIDevice, error) {
 		return nil, fmt.Errorf("failed to read %s: %w", sysClassCXI, err)
 	}
 
-	var devices []*CXIDevice
+	devices := make([]*CXIDevice, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
 			continue
@@ -97,6 +97,7 @@ func DiscoverDevices() ([]*CXIDevice, error) {
 	return devices, nil
 }
 
+//nolint:unparam // error return for future error handling expansion
 func discoverDevice(name string) (*CXIDevice, error) {
 	devicePath := filepath.Join("/dev", name)
 	sysPath := filepath.Join(sysClassCXI, name)
@@ -163,7 +164,7 @@ func WatchDevices(stopCh <-chan struct{}) (<-chan []*CXIDevice, error) {
 
 	go func() {
 		defer close(updateCh)
-		defer watcher.Close()
+		defer func() { _ = watcher.Close() }()
 
 		devices, err := DiscoverDevices()
 		if err != nil {

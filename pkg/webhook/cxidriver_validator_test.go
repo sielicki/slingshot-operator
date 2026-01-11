@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:dupl // similar test structure is intentional for different scenarios
 package webhook
 
 import (
@@ -115,10 +116,10 @@ func TestCXIDriverValidator_Handle_InvalidSemver(t *testing.T) {
 	_ = validator.InjectDecoder(decoder)
 
 	tests := []struct {
-		name           string
-		version        string
-		shouldWarn     bool
-		shouldDeny     bool
+		name       string
+		version    string
+		shouldWarn bool
+		shouldDeny bool
 	}{
 		{"valid semver", "1.0.0", false, false},
 		{"valid semver with v", "v1.0.0", false, false},

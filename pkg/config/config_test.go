@@ -56,10 +56,10 @@ func TestGetEnv(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.key, tt.envValue)
-				defer os.Unsetenv(tt.key)
+				_ = os.Setenv(tt.key, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.key) }()
 			} else {
-				os.Unsetenv(tt.key)
+				_ = os.Unsetenv(tt.key)
 			}
 
 			got := GetEnv(tt.key, tt.defaultValue)
@@ -118,10 +118,10 @@ func TestGetEnvInt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.key, tt.envValue)
-				defer os.Unsetenv(tt.key)
+				_ = os.Setenv(tt.key, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.key) }()
 			} else {
-				os.Unsetenv(tt.key)
+				_ = os.Unsetenv(tt.key)
 			}
 
 			got := GetEnvInt(tt.key, tt.defaultValue)
@@ -194,10 +194,10 @@ func TestGetEnvBool(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.key, tt.envValue)
-				defer os.Unsetenv(tt.key)
+				_ = os.Setenv(tt.key, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.key) }()
 			} else {
-				os.Unsetenv(tt.key)
+				_ = os.Unsetenv(tt.key)
 			}
 
 			got := GetEnvBool(tt.key, tt.defaultValue)
@@ -270,10 +270,10 @@ func TestGetEnvDuration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.key, tt.envValue)
-				defer os.Unsetenv(tt.key)
+				_ = os.Setenv(tt.key, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.key) }()
 			} else {
-				os.Unsetenv(tt.key)
+				_ = os.Unsetenv(tt.key)
 			}
 
 			got := GetEnvDuration(tt.key, tt.defaultValue)
@@ -360,15 +360,16 @@ func TestGetEnvUint32(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envValue != "" {
-				os.Setenv(tt.key, tt.envValue)
-				defer os.Unsetenv(tt.key)
+				_ = os.Setenv(tt.key, tt.envValue)
+				defer func() { _ = os.Unsetenv(tt.key) }()
 			} else {
-				os.Unsetenv(tt.key)
+				_ = os.Unsetenv(tt.key)
 			}
 
 			got := GetEnvUint32(tt.key, tt.defaultValue)
 			if got != tt.expected {
-				t.Errorf("GetEnvUint32(%q, %d) = %d (0x%x), want %d (0x%x)", tt.key, tt.defaultValue, got, got, tt.expected, tt.expected)
+				t.Errorf("GetEnvUint32(%q, %d) = %d (0x%x), want %d (0x%x)",
+					tt.key, tt.defaultValue, got, got, tt.expected, tt.expected)
 			}
 		})
 	}
@@ -376,14 +377,14 @@ func TestGetEnvUint32(t *testing.T) {
 
 func TestNewOperatorConfigFromEnv(t *testing.T) {
 	t.Run("uses defaults when no env vars set", func(t *testing.T) {
-		os.Unsetenv(EnvOperatorNamespace)
-		os.Unsetenv("METRICS_BIND_ADDRESS")
-		os.Unsetenv("HEALTH_PROBE_BIND_ADDRESS")
-		os.Unsetenv("LEADER_ELECT")
-		os.Unsetenv("SECURE_METRICS")
-		os.Unsetenv("ENABLE_HTTP2")
-		os.Unsetenv("ENABLE_SIDECAR_WEBHOOK")
-		os.Unsetenv("RETRY_HANDLER_IMAGE")
+		_ = os.Unsetenv(EnvOperatorNamespace)
+		_ = os.Unsetenv("METRICS_BIND_ADDRESS")
+		_ = os.Unsetenv("HEALTH_PROBE_BIND_ADDRESS")
+		_ = os.Unsetenv("LEADER_ELECT")
+		_ = os.Unsetenv("SECURE_METRICS")
+		_ = os.Unsetenv("ENABLE_HTTP2")
+		_ = os.Unsetenv("ENABLE_SIDECAR_WEBHOOK")
+		_ = os.Unsetenv("RETRY_HANDLER_IMAGE")
 
 		config := NewOperatorConfigFromEnv()
 
@@ -417,24 +418,24 @@ func TestNewOperatorConfigFromEnv(t *testing.T) {
 	})
 
 	t.Run("uses env vars when set", func(t *testing.T) {
-		os.Setenv(EnvOperatorNamespace, "custom-namespace")
-		os.Setenv("METRICS_BIND_ADDRESS", ":9090")
-		os.Setenv("HEALTH_PROBE_BIND_ADDRESS", ":9091")
-		os.Setenv("LEADER_ELECT", "true")
-		os.Setenv("SECURE_METRICS", "false")
-		os.Setenv("ENABLE_HTTP2", "true")
-		os.Setenv("ENABLE_SIDECAR_WEBHOOK", "true")
-		os.Setenv("RETRY_HANDLER_IMAGE", "custom/retry:v1")
+		_ = os.Setenv(EnvOperatorNamespace, "custom-namespace")
+		_ = os.Setenv("METRICS_BIND_ADDRESS", ":9090")
+		_ = os.Setenv("HEALTH_PROBE_BIND_ADDRESS", ":9091")
+		_ = os.Setenv("LEADER_ELECT", "true")
+		_ = os.Setenv("SECURE_METRICS", "false")
+		_ = os.Setenv("ENABLE_HTTP2", "true")
+		_ = os.Setenv("ENABLE_SIDECAR_WEBHOOK", "true")
+		_ = os.Setenv("RETRY_HANDLER_IMAGE", "custom/retry:v1")
 
 		defer func() {
-			os.Unsetenv(EnvOperatorNamespace)
-			os.Unsetenv("METRICS_BIND_ADDRESS")
-			os.Unsetenv("HEALTH_PROBE_BIND_ADDRESS")
-			os.Unsetenv("LEADER_ELECT")
-			os.Unsetenv("SECURE_METRICS")
-			os.Unsetenv("ENABLE_HTTP2")
-			os.Unsetenv("ENABLE_SIDECAR_WEBHOOK")
-			os.Unsetenv("RETRY_HANDLER_IMAGE")
+			_ = os.Unsetenv(EnvOperatorNamespace)
+			_ = os.Unsetenv("METRICS_BIND_ADDRESS")
+			_ = os.Unsetenv("HEALTH_PROBE_BIND_ADDRESS")
+			_ = os.Unsetenv("LEADER_ELECT")
+			_ = os.Unsetenv("SECURE_METRICS")
+			_ = os.Unsetenv("ENABLE_HTTP2")
+			_ = os.Unsetenv("ENABLE_SIDECAR_WEBHOOK")
+			_ = os.Unsetenv("RETRY_HANDLER_IMAGE")
 		}()
 
 		config := NewOperatorConfigFromEnv()

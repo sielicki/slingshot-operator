@@ -85,6 +85,7 @@ func runSupervisorMode(ctx context.Context, cxiRHPath string, healthPort int) {
 	fmt.Println("Supervisor stopped")
 }
 
+//nolint:unparam // ctx reserved for cancellation support
 func runSingleMode(ctx context.Context, device, cxiRHPath string) {
 	fmt.Printf("Running single-device mode for %s\n", device)
 

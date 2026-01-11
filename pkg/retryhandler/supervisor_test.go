@@ -196,13 +196,13 @@ func TestHealthServer_Healthz_Healthy(t *testing.T) {
 	s.handlers["cxi0"] = &handlerProcess{running: true}
 
 	// Create test server
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if s.IsHealthy() {
 			w.WriteHeader(http.StatusOK)
-			io.WriteString(w, "ok\n")
+			_, _ = io.WriteString(w, "ok\n")
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			io.WriteString(w, "unhealthy\n")
+			_, _ = io.WriteString(w, "unhealthy\n")
 		}
 	})
 
@@ -223,13 +223,13 @@ func TestHealthServer_Healthz_Unhealthy(t *testing.T) {
 	s := NewSupervisor("", 0)
 	s.handlers["cxi0"] = &handlerProcess{running: false}
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if s.IsHealthy() {
 			w.WriteHeader(http.StatusOK)
-			io.WriteString(w, "ok\n")
+			_, _ = io.WriteString(w, "ok\n")
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			io.WriteString(w, "unhealthy\n")
+			_, _ = io.WriteString(w, "unhealthy\n")
 		}
 	})
 
@@ -246,9 +246,9 @@ func TestHealthServer_Healthz_Unhealthy(t *testing.T) {
 func TestHealthServer_Readyz(t *testing.T) {
 	_ = NewSupervisor("", 0) // Create supervisor to verify it works
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "ready\n")
+		_, _ = io.WriteString(w, "ready\n")
 	})
 
 	req := httptest.NewRequest("GET", "/readyz", nil)
@@ -299,7 +299,7 @@ func TestHealthServer_Status(t *testing.T) {
 				Restarts: st.RestartCount,
 			})
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	req := httptest.NewRequest("GET", "/status", nil)

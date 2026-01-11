@@ -30,9 +30,9 @@ import (
 )
 
 const (
-	annotationInjectSidecar  = "slingshot.hpe.com/inject-retry-handler"
+	annotationInjectSidecar   = "slingshot.hpe.com/inject-retry-handler"
 	annotationSidecarInjected = "slingshot.hpe.com/retry-handler-injected"
-	labelManagedBy           = "slingshot.hpe.com/managed-by"
+	labelManagedBy            = "slingshot.hpe.com/managed-by"
 
 	defaultRetryHandlerImage = "ghcr.io/sielicki/slingshot-operator/retry-handler:latest"
 	defaultCXIRHPath         = "/usr/bin/cxi_rh"
@@ -40,10 +40,10 @@ const (
 )
 
 type SidecarInjectorConfig struct {
-	RetryHandlerImage  string
-	CXIRHPath          string
-	ResourceName       string
-	UseNativeSidecar   bool // Use K8s 1.28+ native sidecar (init container with restartPolicy: Always)
+	RetryHandlerImage string
+	CXIRHPath         string
+	ResourceName      string
+	UseNativeSidecar  bool // Use K8s 1.28+ native sidecar (init container with restartPolicy: Always)
 }
 
 type SidecarInjector struct {
@@ -193,7 +193,7 @@ func (s *SidecarInjector) findCXIDevices(pod *corev1.Pod) []string {
 		}
 	}
 
-	var devices []string
+	devices := make([]string, 0, len(deviceSet))
 	for device := range deviceSet {
 		devices = append(devices, device)
 	}

@@ -57,7 +57,8 @@ func (v *CXIDriverValidator) Handle(ctx context.Context, req admission.Request) 
 	if driver.Spec.Version == "" {
 		errs = append(errs, "spec.version is required")
 	} else if !semverRegex.MatchString(driver.Spec.Version) {
-		warnings = append(warnings, fmt.Sprintf("spec.version %q does not follow semver format (e.g., 1.8.3)", driver.Spec.Version))
+		warnings = append(warnings,
+			fmt.Sprintf("spec.version %q does not follow semver format (e.g., 1.8.3)", driver.Spec.Version))
 	}
 
 	// Validate driver source configuration
@@ -73,16 +74,20 @@ func (v *CXIDriverValidator) Handle(ctx context.Context, req admission.Request) 
 	case cxiv1.DriverSourcePreinstalled, "":
 		// No additional validation needed
 	default:
-		errs = append(errs, fmt.Sprintf("spec.source.type must be one of: dkms, prebuilt, preinstalled (got %q)", driver.Spec.Source.Type))
+		errs = append(errs,
+			fmt.Sprintf("spec.source.type must be one of: dkms, prebuilt, preinstalled (got %q)", driver.Spec.Source.Type))
 	}
 
 	// Validate retry handler configuration
 	if driver.Spec.RetryHandler.Enabled {
 		switch driver.Spec.RetryHandler.Mode {
-		case cxiv1.RetryHandlerModeDaemonSet, cxiv1.RetryHandlerModeSidecar, cxiv1.RetryHandlerModeKernel, cxiv1.RetryHandlerModeNone, "":
+		case cxiv1.RetryHandlerModeDaemonSet, cxiv1.RetryHandlerModeSidecar,
+			cxiv1.RetryHandlerModeKernel, cxiv1.RetryHandlerModeNone, "":
 			// Valid modes
 		default:
-			errs = append(errs, fmt.Sprintf("spec.retryHandler.mode must be one of: daemonset, sidecar, kernel, none (got %q)", driver.Spec.RetryHandler.Mode))
+			errs = append(errs, fmt.Sprintf(
+				"spec.retryHandler.mode must be one of: daemonset, sidecar, kernel, none (got %q)",
+				driver.Spec.RetryHandler.Mode))
 		}
 
 		// Warn if sidecar mode is selected but no sidecar config
@@ -97,15 +102,20 @@ func (v *CXIDriverValidator) Handle(ctx context.Context, req admission.Request) 
 		case cxiv1.DeviceSharingModeShared, cxiv1.DeviceSharingModeExclusive, "":
 			// Valid modes
 		default:
-			errs = append(errs, fmt.Sprintf("spec.devicePlugin.sharingMode must be one of: shared, exclusive (got %q)", driver.Spec.DevicePlugin.SharingMode))
+			errs = append(errs, fmt.Sprintf(
+				"spec.devicePlugin.sharingMode must be one of: shared, exclusive (got %q)",
+				driver.Spec.DevicePlugin.SharingMode))
 		}
 
-		if driver.Spec.DevicePlugin.SharedCapacity < 1 && driver.Spec.DevicePlugin.SharingMode == cxiv1.DeviceSharingModeShared {
+		sharedMode := driver.Spec.DevicePlugin.SharingMode == cxiv1.DeviceSharingModeShared
+		if driver.Spec.DevicePlugin.SharedCapacity < 1 && sharedMode {
 			errs = append(errs, "spec.devicePlugin.sharedCapacity must be at least 1 when sharingMode is 'shared'")
 		}
 
 		if driver.Spec.DevicePlugin.SharedCapacity > 1000 {
-			warnings = append(warnings, fmt.Sprintf("spec.devicePlugin.sharedCapacity=%d is very high; consider if this is intentional", driver.Spec.DevicePlugin.SharedCapacity))
+			warnings = append(warnings, fmt.Sprintf(
+				"spec.devicePlugin.sharedCapacity=%d is very high; consider if this is intentional",
+				driver.Spec.DevicePlugin.SharedCapacity))
 		}
 	}
 
@@ -117,8 +127,11 @@ func (v *CXIDriverValidator) Handle(ctx context.Context, req admission.Request) 
 	}
 
 	// Check for conflicting configurations
-	if driver.Spec.RetryHandler.Mode == cxiv1.RetryHandlerModeKernel && driver.Spec.Source.Type == cxiv1.DriverSourcePreinstalled {
-		warnings = append(warnings, "kernel retry handler mode requires driver to be built with CONFIG_CXI_RETRY_HANDLER=y")
+	kernelMode := driver.Spec.RetryHandler.Mode == cxiv1.RetryHandlerModeKernel
+	preinstalled := driver.Spec.Source.Type == cxiv1.DriverSourcePreinstalled
+	if kernelMode && preinstalled {
+		warnings = append(warnings,
+			"kernel retry handler mode requires driver to be built with CONFIG_CXI_RETRY_HANDLER=y")
 	}
 
 	// Validate on UPDATE: check for breaking changes

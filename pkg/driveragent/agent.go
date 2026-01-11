@@ -66,14 +66,14 @@ type Config struct {
 	NodeName        string
 	Namespace       string
 	DriverSource    DriverSource
-	DKMSSourceURL   string        // URL to driver source (GitHub zip or tarball)
-	DKMSPkgName     string        // DKMS package name (default: "cxi-driver")
-	DKMSPkgVersion  string        // DKMS package version (auto-detected from URL if empty)
+	DKMSSourceURL   string // URL to driver source (GitHub zip or tarball)
+	DKMSPkgName     string // DKMS package name (default: "cxi-driver")
+	DKMSPkgVersion  string // DKMS package version (auto-detected from URL if empty)
 	PrebuiltURL     string
 	HealthPort      int
 	PollInterval    time.Duration
-	SwitchIDMask    uint32        // Mask for extracting switch ID from NID (default: 0xfffc0)
-	DisableLabeling bool          // Disable node labeling for topology awareness (default: false, labeling enabled)
+	SwitchIDMask    uint32 // Mask for extracting switch ID from NID (default: 0xfffc0)
+	DisableLabeling bool   // Disable node labeling for topology awareness (default: false, labeling enabled)
 }
 
 type Agent struct {
@@ -155,6 +155,7 @@ func (a *Agent) ensureDriver(ctx context.Context) error {
 	}
 }
 
+//nolint:unparam // ctx reserved for cancellation support
 func (a *Agent) installDKMS(ctx context.Context) error {
 	a.log.Info("Installing driver via DKMS")
 
@@ -215,6 +216,7 @@ func (a *Agent) installDKMS(ctx context.Context) error {
 	return nil
 }
 
+//nolint:unparam // ctx reserved for cancellation support
 func (a *Agent) installPrebuilt(ctx context.Context) error {
 	a.log.Info("Installing prebuilt driver")
 
@@ -247,6 +249,7 @@ func (a *Agent) installPrebuilt(ctx context.Context) error {
 	return nil
 }
 
+//nolint:unparam // ctx reserved for cancellation support
 func (a *Agent) verifyPreinstalled(ctx context.Context) error {
 	a.log.Info("Verifying preinstalled driver")
 
@@ -316,11 +319,14 @@ func (a *Agent) updateCXIDeviceStatus(ctx context.Context, dev *deviceplugin.CXI
 		linkState = slingshotv1.LinkStateDown
 	}
 
-	healthStatus := slingshotv1.HealthStatusHealthy
-	if linkState == slingshotv1.LinkStateDown {
+	var healthStatus slingshotv1.HealthStatus
+	switch linkState {
+	case slingshotv1.LinkStateDown:
 		healthStatus = slingshotv1.HealthStatusUnhealthy
-	} else if linkState == slingshotv1.LinkStateUnknown {
+	case slingshotv1.LinkStateUnknown:
 		healthStatus = slingshotv1.HealthStatusUnknown
+	default:
+		healthStatus = slingshotv1.HealthStatusHealthy
 	}
 
 	now := metav1.Now()
@@ -377,7 +383,8 @@ func (a *Agent) updateCXIDeviceStatus(ctx context.Context, dev *deviceplugin.CXI
 		return fmt.Errorf("failed to update CXIDevice status: %w", err)
 	}
 
-	a.log.V(1).Info("Updated CXIDevice", "name", deviceName, "pci", dev.PCIAddress, "numa", dev.NUMANode, "link", dev.LinkState)
+	a.log.V(1).Info("Updated CXIDevice",
+		"name", deviceName, "pci", dev.PCIAddress, "numa", dev.NUMANode, "link", dev.LinkState)
 
 	return nil
 }
@@ -502,25 +509,25 @@ func (a *Agent) runHealthServer() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "ok")
+		_, _ = fmt.Fprintln(w, "ok")
 	})
 
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		if a.IsReady() {
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, "ready")
+			_, _ = fmt.Fprintln(w, "ready")
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			a.mu.RLock()
 			lastErr := a.lastError
 			a.mu.RUnlock()
-			fmt.Fprintf(w, "not ready: %s\n", lastErr)
+			_, _ = fmt.Fprintf(w, "not ready: %s\n", lastErr)
 		}
 	})
 
-	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/status", func(w http.ResponseWriter, _ *http.Request) {
 		a.mu.RLock()
 		devices := a.devices
 		ready := a.driverReady
@@ -528,20 +535,20 @@ func (a *Agent) runHealthServer() {
 		a.mu.RUnlock()
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, "{\n  \"node\": %q,\n  \"driverReady\": %v,\n", a.config.NodeName, ready)
+		_, _ = fmt.Fprintf(w, "{\n  \"node\": %q,\n  \"driverReady\": %v,\n", a.config.NodeName, ready)
 		if lastErr != "" {
-			fmt.Fprintf(w, "  \"lastError\": %q,\n", lastErr)
+			_, _ = fmt.Fprintf(w, "  \"lastError\": %q,\n", lastErr)
 		}
-		fmt.Fprintf(w, "  \"devices\": [\n")
+		_, _ = fmt.Fprintf(w, "  \"devices\": [\n")
 		for i, dev := range devices {
-			fmt.Fprintf(w, "    {\"name\": %q, \"pci\": %q, \"numa\": %d, \"link\": %q}",
+			_, _ = fmt.Fprintf(w, "    {\"name\": %q, \"pci\": %q, \"numa\": %d, \"link\": %q}",
 				dev.Name, dev.PCIAddress, dev.NUMANode, dev.LinkState)
 			if i < len(devices)-1 {
-				fmt.Fprint(w, ",")
+				_, _ = fmt.Fprint(w, ",")
 			}
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 		}
-		fmt.Fprintln(w, "  ]\n}")
+		_, _ = fmt.Fprintln(w, "  ]\n}")
 	})
 
 	server := &http.Server{
@@ -553,7 +560,7 @@ func (a *Agent) runHealthServer() {
 		<-a.stopCh
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		server.Shutdown(ctx)
+		_ = server.Shutdown(ctx)
 	}()
 
 	a.log.Info("Health server listening", "port", a.config.HealthPort)

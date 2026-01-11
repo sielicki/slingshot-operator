@@ -34,6 +34,7 @@ func loadModule(name string) error {
 	return nil
 }
 
+//nolint:unused // reserved for future cleanup operations
 func unloadModule(name string) error {
 	cmd := exec.Command("rmmod", name)
 	cmd.Stdout = os.Stdout
@@ -49,7 +50,7 @@ func isModuleLoaded(name string) bool {
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -125,6 +126,7 @@ func runDKMSInstall(moduleName string) error {
 	return nil
 }
 
+//nolint:unused // reserved for future cleanup operations
 func runDKMSRemove(moduleName string) error {
 	cmd := exec.Command("dkms", "remove", moduleName, "--all")
 	cmd.Stdout = os.Stdout

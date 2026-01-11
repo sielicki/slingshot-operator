@@ -130,9 +130,9 @@ func TestConfig_Fields(t *testing.T) {
 }
 
 func TestHealthzEndpoint(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "ok\n")
+		_, _ = io.WriteString(w, "ok\n")
 	})
 
 	req := httptest.NewRequest("GET", "/healthz", nil)
@@ -149,9 +149,9 @@ func TestHealthzEndpoint(t *testing.T) {
 }
 
 func TestReadyzEndpoint(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "ready\n")
+		_, _ = io.WriteString(w, "ready\n")
 	})
 
 	req := httptest.NewRequest("GET", "/readyz", nil)
