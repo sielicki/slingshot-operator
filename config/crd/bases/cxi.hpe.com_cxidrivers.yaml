@@ -371,14 +371,90 @@ spec:
                       DKMS contains DKMS-specific source configuration for HPE Slingshot drivers
                       When set, enables multi-repo builds with ss-sbl and ss-link dependencies
                     properties:
+                      platform:
+                        default: cassini
+                        description: Platform specifies the target hardware platform
+                        enum:
+                        - cassini
+                        - rosetta
+                        type: string
+                      repositories:
+                        description: |-
+                          Repositories allows explicit configuration of each source repository
+                          When specified, overrides the auto-generated URLs from Tag
+                        properties:
+                          cassiniHeaders:
+                            description: |-
+                              CassiniHeaders is the Cassini headers repository
+                              Default: https://github.com/HewlettPackard/shs-cassini-headers.git
+                            properties:
+                              ref:
+                                description: Ref is the git reference (tag, branch,
+                                  or commit SHA)
+                                type: string
+                              url:
+                                description: URL is the git repository URL
+                                type: string
+                            required:
+                            - ref
+                            - url
+                            type: object
+                          cxiDriver:
+                            description: |-
+                              CXIDriver is the main CXI driver repository
+                              Default: https://github.com/HewlettPackard/shs-cxi-driver.git
+                            properties:
+                              ref:
+                                description: Ref is the git reference (tag, branch,
+                                  or commit SHA)
+                                type: string
+                              url:
+                                description: URL is the git repository URL
+                                type: string
+                            required:
+                            - ref
+                            - url
+                            type: object
+                          sbl:
+                            description: |-
+                              SBL is the Slingshot Base Link repository (Cassini 1)
+                              Default: https://github.com/HewlettPackard/ss-sbl.git
+                            properties:
+                              ref:
+                                description: Ref is the git reference (tag, branch,
+                                  or commit SHA)
+                                type: string
+                              url:
+                                description: URL is the git repository URL
+                                type: string
+                            required:
+                            - ref
+                            - url
+                            type: object
+                          slDriver:
+                            description: |-
+                              SLDriver is the Slingshot 2 Link repository (Cassini 2)
+                              Default: https://github.com/HewlettPackard/ss-link.git
+                            properties:
+                              ref:
+                                description: Ref is the git reference (tag, branch,
+                                  or commit SHA)
+                                type: string
+                              url:
+                                description: URL is the git repository URL
+                                type: string
+                            required:
+                            - ref
+                            - url
+                            type: object
+                        type: object
                       tag:
                         description: |-
                           Tag is the release tag to use for all HPE Slingshot repos
                           e.g., "release/shs-12.0.2"
-                          URLs for shs-cxi-driver, ss-sbl, and ss-link are auto-generated from this tag
+                          When set, auto-generates URLs for shs-cxi-driver, ss-sbl, ss-link, and shs-cassini-headers
+                          This is ignored if Repositories is specified
                         type: string
-                    required:
-                    - tag
                     type: object
                   prebuiltCache:
                     description: PrebuiltCache is the container image repository for

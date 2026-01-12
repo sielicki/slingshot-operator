@@ -51,12 +51,66 @@ const (
 	DeviceSharingModeExclusive DeviceSharingMode = "exclusive"
 )
 
+// DKMSPlatform defines the target hardware platform for DKMS builds
+// +kubebuilder:validation:Enum=cassini;rosetta
+type DKMSPlatform string
+
+const (
+	DKMSPlatformCassini DKMSPlatform = "cassini"
+	DKMSPlatformRosetta DKMSPlatform = "rosetta"
+)
+
+// DKMSRepositorySpec defines a git repository for DKMS source
+type DKMSRepositorySpec struct {
+	// URL is the git repository URL
+	// +kubebuilder:validation:Required
+	URL string `json:"url"`
+
+	// Ref is the git reference (tag, branch, or commit SHA)
+	// +kubebuilder:validation:Required
+	Ref string `json:"ref"`
+}
+
 // DKMSSourceSpec defines DKMS-specific driver source configuration
 type DKMSSourceSpec struct {
 	// Tag is the release tag to use for all HPE Slingshot repos
 	// e.g., "release/shs-12.0.2"
-	// URLs for shs-cxi-driver, ss-sbl, and ss-link are auto-generated from this tag
-	Tag string `json:"tag"`
+	// When set, auto-generates URLs for shs-cxi-driver, ss-sbl, ss-link, and shs-cassini-headers
+	// This is ignored if Repositories is specified
+	// +optional
+	Tag string `json:"tag,omitempty"`
+
+	// Platform specifies the target hardware platform
+	// +kubebuilder:default=cassini
+	Platform DKMSPlatform `json:"platform,omitempty"`
+
+	// Repositories allows explicit configuration of each source repository
+	// When specified, overrides the auto-generated URLs from Tag
+	// +optional
+	Repositories *DKMSRepositoriesSpec `json:"repositories,omitempty"`
+}
+
+// DKMSRepositoriesSpec defines all repositories needed for DKMS build
+type DKMSRepositoriesSpec struct {
+	// CXIDriver is the main CXI driver repository
+	// Default: https://github.com/HewlettPackard/shs-cxi-driver.git
+	// +optional
+	CXIDriver *DKMSRepositorySpec `json:"cxiDriver,omitempty"`
+
+	// SBL is the Slingshot Base Link repository (Cassini 1)
+	// Default: https://github.com/HewlettPackard/ss-sbl.git
+	// +optional
+	SBL *DKMSRepositorySpec `json:"sbl,omitempty"`
+
+	// SLDriver is the Slingshot 2 Link repository (Cassini 2)
+	// Default: https://github.com/HewlettPackard/ss-link.git
+	// +optional
+	SLDriver *DKMSRepositorySpec `json:"slDriver,omitempty"`
+
+	// CassiniHeaders is the Cassini headers repository
+	// Default: https://github.com/HewlettPackard/shs-cassini-headers.git
+	// +optional
+	CassiniHeaders *DKMSRepositorySpec `json:"cassiniHeaders,omitempty"`
 }
 
 // DriverSourceSpec defines where to get the driver from

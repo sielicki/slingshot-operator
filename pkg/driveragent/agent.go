@@ -66,10 +66,11 @@ type Config struct {
 	NodeName        string
 	Namespace       string
 	DriverSource    DriverSource
-	DKMSSourceURL   string // URL to driver source (GitHub zip or tarball) - legacy single-repo mode
-	DKMSPkgName     string // DKMS package name (default: "cxi-driver")
-	DKMSPkgVersion  string // DKMS package version (auto-detected from URL if empty)
-	DKMSTag         string // HPE Slingshot release tag (e.g., "release/shs-12.0.2") - multi-repo mode
+	DKMSSourceURL   string       // URL to driver source (GitHub zip or tarball) - legacy single-repo mode
+	DKMSPkgName     string       // DKMS package name (default: "cxi-driver")
+	DKMSPkgVersion  string       // DKMS package version (auto-detected from URL if empty)
+	DKMSTag         string       // HPE Slingshot release tag (e.g., "release/shs-12.0.2") - multi-repo mode
+	DKMSPlatform    DKMSPlatform // Target hardware platform (cassini or rosetta) - default: cassini
 	PrebuiltURL     string
 	HealthPort      int
 	PollInterval    time.Duration
@@ -79,9 +80,18 @@ type Config struct {
 
 // HPE Slingshot repository URL templates (derived from tag)
 const (
-	cxiDriverRepoURL = "https://github.com/HewlettPackard/shs-cxi-driver/archive/refs/tags/%s.tar.gz"
-	sblRepoURL       = "https://github.com/HewlettPackard/ss-sbl/archive/refs/tags/%s.tar.gz"
-	slRepoURL        = "https://github.com/HewlettPackard/ss-link/archive/refs/tags/%s.tar.gz"
+	cxiDriverRepoURL      = "https://github.com/HewlettPackard/shs-cxi-driver/archive/refs/tags/%s.tar.gz"
+	sblRepoURL            = "https://github.com/HewlettPackard/ss-sbl/archive/refs/tags/%s.tar.gz"
+	slRepoURL             = "https://github.com/HewlettPackard/ss-link/archive/refs/tags/%s.tar.gz"
+	cassiniHeadersRepoURL = "https://github.com/HewlettPackard/shs-cassini-headers/archive/refs/tags/%s.tar.gz"
+)
+
+// DKMSPlatform defines the target hardware platform
+type DKMSPlatform string
+
+const (
+	DKMSPlatformCassini DKMSPlatform = "cassini"
+	DKMSPlatformRosetta DKMSPlatform = "rosetta"
 )
 
 type Agent struct {
@@ -105,6 +115,9 @@ func NewAgent(config Config) *Agent {
 	}
 	if config.SwitchIDMask == 0 {
 		config.SwitchIDMask = deviceplugin.DefaultSwitchIDMask
+	}
+	if config.DKMSPlatform == "" {
+		config.DKMSPlatform = DKMSPlatformCassini
 	}
 
 	return &Agent{
@@ -176,13 +189,21 @@ func (a *Agent) installDKMS(ctx context.Context) error {
 	return a.installDKMSLegacy(ctx)
 }
 
-// installDKMSMultiRepo builds the CXI driver with its dependencies (SBL, SL)
+// installDKMSMultiRepo builds the CXI driver with its dependencies (SBL, SL, cassini-headers)
 //
 //nolint:unparam // ctx reserved for cancellation support
 func (a *Agent) installDKMSMultiRepo(ctx context.Context) error {
 	tag := a.config.DKMSTag
+	platform := a.config.DKMSPlatform
 
-	a.log.Info("Building HPE Slingshot driver stack", "tag", tag)
+	a.log.Info("Building HPE Slingshot driver stack", "tag", tag, "platform", platform)
+
+	// 0. Download and prepare cassini-headers (required by SBL)
+	headersURL := fmt.Sprintf(cassiniHeadersRepoURL, tag)
+	a.log.Info("Downloading cassini-headers", "url", headersURL)
+	if err := a.downloadHeaders(headersURL); err != nil {
+		return fmt.Errorf("downloading cassini-headers: %w", err)
+	}
 
 	// 1. Download and build SBL (Slingshot Base Link)
 	sblURL := fmt.Sprintf(sblRepoURL, tag)
@@ -215,7 +236,7 @@ func (a *Agent) installDKMSMultiRepo(ctx context.Context) error {
 	}
 
 	a.setDriverReady(true)
-	a.log.Info("DKMS multi-repo driver installation complete", "tag", tag)
+	a.log.Info("DKMS multi-repo driver installation complete", "tag", tag, "platform", platform)
 	return nil
 }
 

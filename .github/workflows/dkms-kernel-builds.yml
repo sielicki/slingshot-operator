@@ -69,6 +69,10 @@ jobs:
           git clone --depth 1 --branch "$TAG" \
             https://github.com/HewlettPackard/ss-link.git
 
+          # Clone cassini-headers (required by SBL)
+          git clone --depth 1 --branch "$TAG" \
+            https://github.com/HewlettPackard/shs-cassini-headers.git
+
       - name: Prepare combined source archive
         run: |
           VERSION="${{ steps.get-version.outputs.version }}"
@@ -83,6 +87,32 @@ jobs:
 
           # SL driver needs to be at ../sl-driver relative to cxi-driver
           cp -r ss-link cxi-driver-$VERSION/sl-driver
+
+          # Cassini headers need to be installed for SBL build
+          cp -r shs-cassini-headers cxi-driver-$VERSION/cassini-headers
+          # Create the install directory structure that SBL expects
+          mkdir -p cxi-driver-$VERSION/cassini-headers/install/include
+          # Copy all header directories maintaining structure
+          if [ -d shs-cassini-headers/include ]; then
+            cp -r shs-cassini-headers/include/* cxi-driver-$VERSION/cassini-headers/install/include/
+          fi
+          # Some headers may be at top level
+          find shs-cassini-headers -maxdepth 2 -type d -name "sbl" -exec cp -r {} cxi-driver-$VERSION/cassini-headers/install/include/ \; 2>/dev/null || true
+          find shs-cassini-headers -maxdepth 2 -type d -name "cassini" -exec cp -r {} cxi-driver-$VERSION/cassini-headers/install/include/ \; 2>/dev/null || true
+
+          # SBL may have its own headers that need to be in the include path
+          if [ -d ss-sbl/include ]; then
+            cp -r ss-sbl/include/* cxi-driver-$VERSION/cassini-headers/install/include/
+          fi
+
+          # Debug: show what we have
+          echo "=== Cassini headers structure ==="
+          find cxi-driver-$VERSION/cassini-headers/install/include -type f -name "*.h" | head -20 || echo "No headers found"
+          echo "=== SBL source structure ==="
+          ls -la cxi-driver-$VERSION/slingshot_base_link/ | head -10
+          if [ -d cxi-driver-$VERSION/slingshot_base_link/include ]; then
+            find cxi-driver-$VERSION/slingshot_base_link/include -type f -name "*.h" | head -10
+          fi
 
           # Create the archive
           tar -czf cxi-driver-$VERSION.tar.gz cxi-driver-$VERSION

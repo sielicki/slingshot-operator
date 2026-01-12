@@ -319,10 +319,26 @@ func (a *Agent) buildDependency(name, url string) error {
 
 	env := map[string]string{}
 
-	// SBL requires SBL_EXTERNAL_BUILD=1 and PLATFORM_CASSINI_HW=1
+	// SBL requires SBL_EXTERNAL_BUILD=1 and platform selection
 	if name == "sbl" {
 		env["SBL_EXTERNAL_BUILD"] = "1"
-		env["PLATFORM_CASSINI_HW"] = "1"
+
+		// Set platform based on config
+		switch a.config.DKMSPlatform {
+		case DKMSPlatformRosetta:
+			env["PLATFORM_ROSETTA_HW"] = "1"
+		case DKMSPlatformCassini:
+			fallthrough
+		default:
+			env["PLATFORM_CASSINI_HW"] = "1"
+		}
+
+		// Point to cassini-headers install directory
+		headersPath := "/tmp/cassini-headers/install/include"
+		if _, err := os.Stat(headersPath); err == nil {
+			// SBL Makefile uses KCPPFLAGS to find headers
+			env["KCPPFLAGS"] = fmt.Sprintf("-I%s", headersPath)
+		}
 	}
 
 	if err := buildKernelModule(destPath, env); err != nil {
@@ -405,4 +421,92 @@ func (a *Agent) buildCXIDriver(url string) error {
 
 	a.log.Info("CXI driver build complete", "package", pkgName, "version", pkgVersion)
 	return nil
+}
+
+// downloadHeaders downloads and prepares cassini-headers for the SBL build
+func (a *Agent) downloadHeaders(url string) error {
+	destPath := "/tmp/cassini-headers"
+
+	// Clean up any previous download
+	if err := os.RemoveAll(destPath); err != nil {
+		a.log.V(1).Info("Failed to clean up previous headers", "path", destPath, "error", err)
+	}
+
+	if err := downloadAndExtract(url, destPath); err != nil {
+		return fmt.Errorf("failed to download cassini-headers: %w", err)
+	}
+
+	// Flatten GitHub archive structure if needed
+	if err := prepareDKMSSource(destPath, "cassini-headers", ""); err != nil {
+		return fmt.Errorf("failed to prepare cassini-headers: %w", err)
+	}
+
+	// Create the install/include directory structure that SBL expects
+	installDir := filepath.Join(destPath, "install", "include")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		return fmt.Errorf("failed to create install directory: %w", err)
+	}
+
+	// Copy headers from include/ to install/include/
+	srcInclude := filepath.Join(destPath, "include")
+	if _, err := os.Stat(srcInclude); err == nil {
+		entries, err := os.ReadDir(srcInclude)
+		if err != nil {
+			return fmt.Errorf("failed to read include directory: %w", err)
+		}
+		for _, entry := range entries {
+			src := filepath.Join(srcInclude, entry.Name())
+			dst := filepath.Join(installDir, entry.Name())
+			if err := copyDir(src, dst); err != nil {
+				return fmt.Errorf("failed to copy %s: %w", entry.Name(), err)
+			}
+		}
+	}
+
+	a.log.Info("Prepared cassini-headers", "path", destPath)
+	return nil
+}
+
+// copyDir recursively copies a directory
+func copyDir(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	if srcInfo.IsDir() {
+		if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(src)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			srcPath := filepath.Join(src, entry.Name())
+			dstPath := filepath.Join(dst, entry.Name())
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Copy file
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = srcFile.Close() }()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dstFile.Close() }()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+	return os.Chmod(dst, srcInfo.Mode())
 }

@@ -175,14 +175,18 @@ metadata:
   name: cxi-driver
 spec:
   # Driver version to install
-  version: "1.8.3"
+  version: "13.0.0"
 
   # Driver source configuration
   source:
     # Options: dkms, prebuilt, preinstalled
-    type: preinstalled
-    # For DKMS: URL to driver source archive
-    # repository: "https://github.com/HewlettPackard/shs-cxi-driver/archive/refs/tags/v1.8.3.zip"
+    type: dkms
+
+    # DKMS configuration for HPE Slingshot driver stack
+    dkms:
+      # Release tag for all HPE Slingshot repositories
+      # Automatically clones shs-cxi-driver, ss-sbl, ss-link, and shs-cassini-headers
+      tag: "release/shs-13.0.0"
 
   # Retry handler configuration
   retryHandler:
@@ -229,14 +233,14 @@ spec:
 
 ```mermaid
 flowchart LR
-    subgraph DKMS["DKMS Installation"]
+    subgraph DKMS["DKMS Installation (Multi-Repo)"]
         direction TB
-        D1["Download source<br/>(GitHub zip/tarball)"] --> D2["Extract & flatten"]
-        D2 --> D3["Generate dkms.conf"]
-        D3 --> D4["dkms add"]
-        D4 --> D5["dkms build"]
-        D5 --> D6["dkms install"]
-        D6 --> D7["modprobe cxi_ss1"]
+        D0["Download repos:<br/>• shs-cassini-headers<br/>• ss-sbl<br/>• ss-link<br/>• shs-cxi-driver"] --> D1["Setup headers"]
+        D1 --> D2["Build SBL<br/>(PLATFORM_CASSINI_HW=1)"]
+        D2 --> D3["Build SL"]
+        D3 --> D4["Build CXI driver<br/>(with dependency symvers)"]
+        D4 --> D5["dkms add/build/install"]
+        D5 --> D6["modprobe cxi_ss1"]
     end
 
     subgraph Prebuilt["Prebuilt Installation"]
@@ -253,6 +257,24 @@ flowchart LR
         V2 -->|Yes| V4["Ready"]
         V3 --> V4
     end
+```
+
+### DKMS Configuration
+
+The DKMS driver source builds the HPE Slingshot driver stack from source. When you specify a release tag, the operator automatically clones and builds all required repositories:
+
+| Repository | Description |
+|------------|-------------|
+| `shs-cxi-driver` | Main CXI driver source |
+| `ss-sbl` | Slingshot Base Link |
+| `ss-link` | Slingshot 2 Link |
+| `shs-cassini-headers` | Required headers for build |
+
+```yaml
+source:
+  type: dkms
+  dkms:
+    tag: "release/shs-13.0.0"
 ```
 
 ### Retry Handler Modes
