@@ -1,0 +1,230 @@
+# Build cxi_rh from shs-libcxi and the Go supervisor wrapper
+# This produces a complete retry-handler image with both binaries
+# Supports Ubuntu, Rocky Linux, and Alpine base images
+
+ARG BASE_IMAGE=ubuntu:24.04
+
+# =============================================================================
+# Stage 1a: Build cxi_rh from shs-libcxi (Alpine)
+# =============================================================================
+FROM alpine:3.21 AS cxi-builder-alpine
+
+ARG LIBCXI_VERSION=main
+ARG LIBCXI_REPO=https://github.com/HewlettPackard/shs-libcxi.git
+
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    build-base \
+    autoconf \
+    automake \
+    libtool \
+    pkgconfig \
+    libconfig-dev \
+    libuv-dev \
+    fuse-dev \
+    yaml-dev \
+    libnl3-dev \
+    numactl-dev \
+    linux-headers \
+    lm-sensors-dev
+
+WORKDIR /src
+
+RUN git clone --depth 1 --branch ${LIBCXI_VERSION} ${LIBCXI_REPO} shs-libcxi
+
+WORKDIR /src/shs-libcxi
+
+# Alpine doesn't have systemd, build without it
+RUN ./autogen.sh \
+    && ./configure \
+        --prefix=/usr \
+        --sysconfdir=/etc \
+    && make -j$(nproc) \
+    && make DESTDIR=/install install
+
+# =============================================================================
+# Stage 1b: Build cxi_rh from shs-libcxi (Ubuntu)
+# =============================================================================
+FROM ubuntu:24.04 AS cxi-builder-ubuntu
+
+ARG LIBCXI_VERSION=main
+ARG LIBCXI_REPO=https://github.com/HewlettPackard/shs-libcxi.git
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    build-essential \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    libconfig-dev \
+    libuv1-dev \
+    libfuse-dev \
+    libyaml-dev \
+    libnl-3-dev \
+    libnl-route-3-dev \
+    libnuma-dev \
+    libsystemd-dev \
+    lm-sensors \
+    libsensors-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+RUN git clone --depth 1 --branch ${LIBCXI_VERSION} ${LIBCXI_REPO} shs-libcxi
+
+WORKDIR /src/shs-libcxi
+
+RUN ./autogen.sh \
+    && ./configure \
+        --prefix=/usr \
+        --sysconfdir=/etc \
+        --with-systemd \
+    && make -j$(nproc) \
+    && make DESTDIR=/install install
+
+# =============================================================================
+# Stage 1b: Build cxi_rh from shs-libcxi (Rocky Linux)
+# =============================================================================
+FROM rockylinux:9 AS cxi-builder-rocky
+
+ARG LIBCXI_VERSION=main
+ARG LIBCXI_REPO=https://github.com/HewlettPackard/shs-libcxi.git
+
+RUN dnf install -y --setopt=install_weak_deps=False \
+    git \
+    ca-certificates \
+    gcc \
+    gcc-c++ \
+    make \
+    autoconf \
+    automake \
+    libtool \
+    pkgconfig \
+    libconfig-devel \
+    libuv-devel \
+    fuse-devel \
+    libyaml-devel \
+    libnl3-devel \
+    numactl-devel \
+    systemd-devel \
+    lm_sensors-devel \
+    && dnf clean all
+
+WORKDIR /src
+
+RUN git clone --depth 1 --branch ${LIBCXI_VERSION} ${LIBCXI_REPO} shs-libcxi
+
+WORKDIR /src/shs-libcxi
+
+RUN ./autogen.sh \
+    && ./configure \
+        --prefix=/usr \
+        --sysconfdir=/etc \
+        --with-systemd \
+    && make -j$(nproc) \
+    && make DESTDIR=/install install
+
+# =============================================================================
+# Stage 2: Build Go supervisor wrapper
+# =============================================================================
+FROM golang:1.25 AS go-builder
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+WORKDIR /workspace
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -a -ldflags="-s -w" -o retry-handler ./cmd/retry-handler
+
+# =============================================================================
+# Stage 3a: Runtime image (Alpine)
+# =============================================================================
+FROM alpine:3.21 AS runtime-alpine
+
+RUN apk add --no-cache \
+    libconfig \
+    libuv \
+    fuse \
+    yaml \
+    libnl3 \
+    numactl \
+    lm-sensors-libs \
+    ca-certificates
+
+COPY --from=cxi-builder-alpine /install/usr/bin/cxi_rh /usr/bin/cxi_rh
+COPY --from=cxi-builder-alpine /install/usr/lib/*.so* /usr/lib/
+COPY --from=cxi-builder-alpine /install/etc/cxi /etc/cxi
+
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/retry-handler
+
+ENTRYPOINT ["/usr/local/bin/retry-handler"]
+
+# =============================================================================
+# Stage 3b: Runtime image (Ubuntu)
+# =============================================================================
+FROM ubuntu:24.04 AS runtime-ubuntu
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libconfig9 \
+    libuv1 \
+    libfuse2 \
+    libyaml-0-2 \
+    libnl-3-200 \
+    libnl-route-3-200 \
+    libnuma1 \
+    libsystemd0 \
+    libsensors5 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=cxi-builder-ubuntu /install/usr/bin/cxi_rh /usr/bin/cxi_rh
+COPY --from=cxi-builder-ubuntu /install/usr/lib/*.so* /usr/lib/
+COPY --from=cxi-builder-ubuntu /install/etc/cxi /etc/cxi
+
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/retry-handler
+
+RUN ldconfig
+
+ENTRYPOINT ["/usr/local/bin/retry-handler"]
+
+# =============================================================================
+# Stage 3c: Runtime image (Rocky Linux)
+# =============================================================================
+FROM rockylinux:9-minimal AS runtime-rocky
+
+RUN microdnf install -y --setopt=install_weak_deps=False \
+    libconfig \
+    libuv \
+    fuse-libs \
+    libyaml \
+    libnl3 \
+    numactl-libs \
+    systemd-libs \
+    lm_sensors-libs \
+    ca-certificates \
+    && microdnf clean all
+
+COPY --from=cxi-builder-rocky /install/usr/bin/cxi_rh /usr/bin/cxi_rh
+COPY --from=cxi-builder-rocky /install/usr/lib64/*.so* /usr/lib64/
+COPY --from=cxi-builder-rocky /install/etc/cxi /etc/cxi
+
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/retry-handler
+
+RUN ldconfig
+
+ENTRYPOINT ["/usr/local/bin/retry-handler"]
+
+# =============================================================================
+# Default target: Ubuntu
+# Use --target=runtime-ubuntu or --target=runtime-rocky to select
+# =============================================================================
+FROM runtime-ubuntu AS runtime

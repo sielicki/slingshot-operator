@@ -127,6 +127,23 @@ docker-build: ## Build docker image with the manager.
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
 
+# Retry handler image configuration
+RETRY_HANDLER_IMG ?= retry-handler:latest
+LIBCXI_VERSION ?= main
+LIBCXI_REPO ?= https://github.com/HewlettPackard/shs-libcxi.git
+
+.PHONY: docker-build-retry-handler
+docker-build-retry-handler: ## Build retry-handler image with cxi_rh from shs-libcxi.
+	$(CONTAINER_TOOL) build \
+		--build-arg LIBCXI_VERSION=$(LIBCXI_VERSION) \
+		--build-arg LIBCXI_REPO=$(LIBCXI_REPO) \
+		-t $(RETRY_HANDLER_IMG) \
+		-f Dockerfile.retry-handler .
+
+.PHONY: docker-push-retry-handler
+docker-push-retry-handler: ## Push retry-handler image.
+	$(CONTAINER_TOOL) push $(RETRY_HANDLER_IMG)
+
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
 # - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/

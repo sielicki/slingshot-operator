@@ -6,12 +6,14 @@ on:
     paths:
       - 'cmd/retry-handler/**'
       - 'pkg/retryhandler/**'
+      - 'Dockerfile.retry-handler'
       - '.github/workflows/retry-handler-builds.yml'
   pull_request:
     branches: [main]
     paths:
       - 'cmd/retry-handler/**'
       - 'pkg/retryhandler/**'
+      - 'Dockerfile.retry-handler'
       - '.github/workflows/retry-handler-builds.yml'
   workflow_dispatch:
 
@@ -21,6 +23,7 @@ concurrency:
 
 env:
   GO_VERSION: '1.25'
+  LIBCXI_VERSION: 'main'
 
 jobs:
   # ==========================================================================
@@ -64,7 +67,57 @@ jobs:
           retention-days: 5
 
   # ==========================================================================
-  # Build container images for each distribution
+  # Build retry-handler with cxi_rh from shs-libcxi
+  # ==========================================================================
+  build-with-cxi-rh:
+    name: Build with cxi_rh (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: alpine
+            target: runtime-alpine
+          - name: ubuntu
+            target: runtime-ubuntu
+          - name: rocky
+            target: runtime-rocky
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build retry-handler with cxi_rh
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.retry-handler
+          target: ${{ matrix.target }}
+          build-args: |
+            LIBCXI_VERSION=${{ env.LIBCXI_VERSION }}
+          push: false
+          load: true
+          tags: retry-handler-cxi:${{ matrix.name }}
+          cache-from: type=gha,scope=retry-handler-cxi-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=retry-handler-cxi-${{ matrix.name }}
+
+      - name: Test container
+        run: |
+          echo "=== Testing retry-handler with cxi_rh on ${{ matrix.name }} ==="
+          docker run --rm retry-handler-cxi:${{ matrix.name }} --help
+
+          # Verify cxi_rh binary is present
+          docker run --rm --entrypoint /bin/sh retry-handler-cxi:${{ matrix.name }} -c 'ls -la /usr/bin/cxi_rh' || \
+            docker run --rm --entrypoint /bin/bash retry-handler-cxi:${{ matrix.name }} -c 'ls -la /usr/bin/cxi_rh'
+          docker run --rm --entrypoint /usr/bin/cxi_rh retry-handler-cxi:${{ matrix.name }} --help || echo "cxi_rh may require device access"
+
+          echo "=== Container test completed for ${{ matrix.name }} ==="
+
+  # ==========================================================================
+  # Build container images for each distribution (wrapper-only, no cxi_rh)
   # ==========================================================================
   container-images:
     name: Container (${{ matrix.base }})
@@ -262,7 +315,7 @@ jobs:
   # ==========================================================================
   summary:
     name: Build Summary
-    needs: [build, container-images, functional-tests]
+    needs: [build, build-with-cxi-rh, container-images, functional-tests]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -273,13 +326,19 @@ jobs:
           echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Binary Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Container Images | ${{ needs.container-images.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build with cxi_rh | ${{ needs.build-with-cxi-rh.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Images (wrapper-only) | ${{ needs.container-images.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Functional Tests | ${{ needs.functional-tests.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Tested Configurations" >> $GITHUB_STEP_SUMMARY
           echo "**Architectures:** amd64, arm64" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Container Bases:**" >> $GITHUB_STEP_SUMMARY
+          echo "**Full retry-handler with cxi_rh (from shs-libcxi):**" >> $GITHUB_STEP_SUMMARY
+          echo "- Alpine 3.21" >> $GITHUB_STEP_SUMMARY
+          echo "- Ubuntu 24.04" >> $GITHUB_STEP_SUMMARY
+          echo "- Rocky Linux 9" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Wrapper-only Container Bases:**" >> $GITHUB_STEP_SUMMARY
           echo "- Distroless (production)" >> $GITHUB_STEP_SUMMARY
           echo "- Alpine" >> $GITHUB_STEP_SUMMARY
           echo "- Ubuntu 24.04" >> $GITHUB_STEP_SUMMARY
