@@ -51,6 +51,14 @@ const (
 	DeviceSharingModeExclusive DeviceSharingMode = "exclusive"
 )
 
+// DKMSSourceSpec defines DKMS-specific driver source configuration
+type DKMSSourceSpec struct {
+	// Tag is the release tag to use for all HPE Slingshot repos
+	// e.g., "release/shs-12.0.2"
+	// URLs for shs-cxi-driver, ss-sbl, and ss-link are auto-generated from this tag
+	Tag string `json:"tag"`
+}
+
 // DriverSourceSpec defines where to get the driver from
 type DriverSourceSpec struct {
 	// Type specifies how the driver is installed
@@ -64,6 +72,11 @@ type DriverSourceSpec struct {
 	// PrebuiltCache is the container image repository for pre-built modules
 	// +optional
 	PrebuiltCache string `json:"prebuiltCache,omitempty"`
+
+	// DKMS contains DKMS-specific source configuration for HPE Slingshot drivers
+	// When set, enables multi-repo builds with ss-sbl and ss-link dependencies
+	// +optional
+	DKMS *DKMSSourceSpec `json:"dkms,omitempty"`
 }
 
 // RetryHandlerDaemonSetSpec defines DaemonSet-specific retry handler options

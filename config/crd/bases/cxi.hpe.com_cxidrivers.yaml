@@ -366,6 +366,20 @@ spec:
               source:
                 description: Source defines where to get the driver from
                 properties:
+                  dkms:
+                    description: |-
+                      DKMS contains DKMS-specific source configuration for HPE Slingshot drivers
+                      When set, enables multi-repo builds with ss-sbl and ss-link dependencies
+                    properties:
+                      tag:
+                        description: |-
+                          Tag is the release tag to use for all HPE Slingshot repos
+                          e.g., "release/shs-12.0.2"
+                          URLs for shs-cxi-driver, ss-sbl, and ss-link are auto-generated from this tag
+                        type: string
+                    required:
+                    - tag
+                    type: object
                   prebuiltCache:
                     description: PrebuiltCache is the container image repository for
                       pre-built modules

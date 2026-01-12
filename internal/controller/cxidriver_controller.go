@@ -382,24 +382,7 @@ func (r *CXIDriverReconciler) buildDriverAgentDaemonSet(cxiDriver *cxiv1.CXIDriv
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: &privileged,
 							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "CXI_DRIVER_VERSION",
-									Value: cxiDriver.Spec.Version,
-								},
-								{
-									Name:  "DRIVER_SOURCE_TYPE",
-									Value: string(cxiDriver.Spec.Source.Type),
-								},
-								{
-									Name: "NODE_NAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "spec.nodeName",
-										},
-									},
-								},
-							},
+							Env: r.buildDriverAgentEnvVars(cxiDriver),
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "health",
@@ -489,6 +472,37 @@ func (r *CXIDriverReconciler) buildDriverAgentDaemonSet(cxiDriver *cxiv1.CXIDriv
 	}
 
 	return ds
+}
+
+func (r *CXIDriverReconciler) buildDriverAgentEnvVars(cxiDriver *cxiv1.CXIDriver) []corev1.EnvVar {
+	env := []corev1.EnvVar{
+		{
+			Name:  "CXI_DRIVER_VERSION",
+			Value: cxiDriver.Spec.Version,
+		},
+		{
+			Name:  "DRIVER_SOURCE_TYPE",
+			Value: string(cxiDriver.Spec.Source.Type),
+		},
+		{
+			Name: "NODE_NAME",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "spec.nodeName",
+				},
+			},
+		},
+	}
+
+	// Add DKMS-specific environment variables if DKMS config is set
+	if cxiDriver.Spec.Source.DKMS != nil && cxiDriver.Spec.Source.DKMS.Tag != "" {
+		env = append(env, corev1.EnvVar{
+			Name:  "DKMS_TAG",
+			Value: cxiDriver.Spec.Source.DKMS.Tag,
+		})
+	}
+
+	return env
 }
 
 func (r *CXIDriverReconciler) buildDevicePluginDaemonSet(cxiDriver *cxiv1.CXIDriver) *appsv1.DaemonSet {
@@ -929,6 +943,14 @@ func (r *CXIDriverReconciler) updateStatus(ctx context.Context, cxiDriver *cxiv1
 		meta.RemoveStatusCondition(&cxiDriver.Status.Conditions, conditionTypeDegraded)
 	} else if failed > 0 {
 		r.setDegradedCondition(cxiDriver, "NodesFailed", fmt.Sprintf("%d nodes failed", failed))
+	} else {
+		// ready == 0, no failures - DaemonSets created but pods not yet ready
+		meta.SetStatusCondition(&cxiDriver.Status.Conditions, metav1.Condition{
+			Type:    conditionTypeAvailable,
+			Status:  metav1.ConditionFalse,
+			Reason:  "WaitingForPods",
+			Message: "Waiting for pods to become ready",
+		})
 	}
 
 	return r.updateStatusRetryOnConflict(ctx, cxiDriver)

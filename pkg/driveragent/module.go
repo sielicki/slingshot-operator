@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
+
 
 func loadModule(name string) error {
 	cmd := exec.Command("modprobe", name)
@@ -135,4 +137,34 @@ func runDKMSRemove(moduleName string) error {
 		return fmt.Errorf("dkms remove failed: %w", err)
 	}
 	return nil
+}
+
+// buildKernelModule builds a kernel module directly using make (not via DKMS).
+// Used for SBL and SL which are built as dependencies before the main CXI driver.
+func buildKernelModule(srcPath string, env map[string]string) error {
+	kver, err := getKernelVersion()
+	if err != nil {
+		return err
+	}
+
+	kdir := fmt.Sprintf("/lib/modules/%s/build", kver)
+
+	cmd := exec.Command("make", "KDIR="+kdir)
+	cmd.Dir = srcPath
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("make failed in %s: %w", srcPath, err)
+	}
+	return nil
+}
+
+// getSymversPath returns the path to Module.symvers for a built dependency
+func getSymversPath(depPath string) string {
+	return filepath.Join(depPath, "Module.symvers")
 }

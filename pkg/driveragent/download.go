@@ -299,3 +299,110 @@ func generateDKMSConf(inPath, outPath, packageName, packageVersion string) error
 
 	return nil
 }
+
+// buildDependency downloads, prepares, and builds a kernel module dependency (SBL or SL)
+func (a *Agent) buildDependency(name, url string) error {
+	destPath := filepath.Join("/tmp", name)
+
+	// Clean up any previous build
+	if err := os.RemoveAll(destPath); err != nil {
+		a.log.V(1).Info("Failed to clean up previous build", "path", destPath, "error", err)
+	}
+
+	if err := downloadAndExtract(url, destPath); err != nil {
+		return fmt.Errorf("failed to download %s: %w", name, err)
+	}
+
+	if err := prepareDKMSSource(destPath, name, ""); err != nil {
+		return fmt.Errorf("failed to prepare %s source: %w", name, err)
+	}
+
+	env := map[string]string{}
+
+	// SBL requires SBL_EXTERNAL_BUILD=1 and PLATFORM_CASSINI_HW=1
+	if name == "sbl" {
+		env["SBL_EXTERNAL_BUILD"] = "1"
+		env["PLATFORM_CASSINI_HW"] = "1"
+	}
+
+	if err := buildKernelModule(destPath, env); err != nil {
+		return fmt.Errorf("failed to build %s: %w", name, err)
+	}
+
+	a.log.Info("Built dependency", "name", name, "path", destPath)
+	return nil
+}
+
+// buildCXIDriver downloads and builds the main CXI driver, linking against dependency symvers
+func (a *Agent) buildCXIDriver(url string) error {
+	sourcePath := "/tmp/cxi-driver"
+
+	// Clean up any previous build
+	if err := os.RemoveAll(sourcePath); err != nil {
+		a.log.V(1).Info("Failed to clean up previous build", "path", sourcePath, "error", err)
+	}
+
+	if err := downloadAndExtract(url, sourcePath); err != nil {
+		return fmt.Errorf("failed to download CXI driver: %w", err)
+	}
+
+	pkgName := a.config.DKMSPkgName
+	if pkgName == "" {
+		pkgName = "cxi-driver"
+	}
+
+	// Extract version from tag (e.g., "release/shs-12.0.2" -> "12.0.2")
+	pkgVersion := a.config.DKMSPkgVersion
+	if pkgVersion == "" && a.config.DKMSTag != "" {
+		// Extract version from tag like "release/shs-12.0.2"
+		parts := strings.Split(a.config.DKMSTag, "-")
+		if len(parts) > 0 {
+			pkgVersion = parts[len(parts)-1]
+		}
+	}
+	if pkgVersion == "" {
+		pkgVersion = extractVersionFromURL(url)
+	}
+
+	a.log.Info("Preparing CXI driver", "package", pkgName, "version", pkgVersion)
+
+	if err := prepareDKMSSource(sourcePath, pkgName, pkgVersion); err != nil {
+		return fmt.Errorf("failed to prepare CXI driver source: %w", err)
+	}
+
+	// Collect symvers from dependencies
+	var symversPaths []string
+	sblSymvers := getSymversPath("/tmp/sbl")
+	slSymvers := getSymversPath("/tmp/sl")
+
+	if _, err := os.Stat(sblSymvers); err == nil {
+		symversPaths = append(symversPaths, sblSymvers)
+	}
+	if _, err := os.Stat(slSymvers); err == nil {
+		symversPaths = append(symversPaths, slSymvers)
+	}
+
+	// Set KBUILD_EXTRA_SYMBOLS for the DKMS build
+	if len(symversPaths) > 0 {
+		symversEnv := strings.Join(symversPaths, " ")
+		if err := os.Setenv("KBUILD_EXTRA_SYMBOLS", symversEnv); err != nil {
+			a.log.V(1).Info("Failed to set KBUILD_EXTRA_SYMBOLS", "error", err)
+		}
+		a.log.Info("Set KBUILD_EXTRA_SYMBOLS", "paths", symversPaths)
+	}
+
+	if err := runDKMSAdd(sourcePath); err != nil {
+		return fmt.Errorf("dkms add failed: %w", err)
+	}
+
+	if err := runDKMSBuild(pkgName); err != nil {
+		return fmt.Errorf("dkms build failed: %w", err)
+	}
+
+	if err := runDKMSInstall(pkgName); err != nil {
+		return fmt.Errorf("dkms install failed: %w", err)
+	}
+
+	a.log.Info("CXI driver build complete", "package", pkgName, "version", pkgVersion)
+	return nil
+}

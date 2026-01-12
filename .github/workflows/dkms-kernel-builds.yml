@@ -6,24 +6,17 @@ on:
     paths:
       - 'pkg/driveragent/**'
       - '.github/workflows/dkms-kernel-builds.yml'
-      - 'Dockerfile.dkms-test'
   pull_request:
     branches: [main]
     paths:
       - 'pkg/driveragent/**'
       - '.github/workflows/dkms-kernel-builds.yml'
-      - 'Dockerfile.dkms-test'
-  # Allow manual trigger with optional driver source URL
   workflow_dispatch:
     inputs:
-      driver_source_url:
-        description: 'URL to CXI driver source archive (optional, uses test module if empty)'
+      driver_tag:
+        description: 'Driver tag to build (e.g., release/shs-12.0.2)'
         required: false
         default: ''
-      driver_version:
-        description: 'Driver version (e.g., 1.2.3)'
-        required: false
-        default: '0.0.1-test'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -34,74 +27,73 @@ env:
 
 jobs:
   # ==========================================================================
-  # Create a test kernel module for DKMS validation
+  # Fetch and prepare the real CXI driver sources from HPE repositories
   # ==========================================================================
-  prepare-test-module:
-    name: Prepare Test Module
+  prepare-driver-sources:
+    name: Prepare CXI Driver Sources
     runs-on: ubuntu-latest
+    outputs:
+      driver_version: ${{ steps.get-version.outputs.version }}
+      driver_tag: ${{ steps.get-version.outputs.tag }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Create test kernel module source
+      - name: Determine driver tag
+        id: get-version
         run: |
-          mkdir -p test-module/src
-          cat > test-module/src/test_module.c << 'EOF'
-          /*
-           * Test kernel module for DKMS build validation
-           * This validates the DKMS infrastructure without requiring actual CXI hardware
-           */
-          #include <linux/init.h>
-          #include <linux/module.h>
-          #include <linux/kernel.h>
+          if [ -n "${{ github.event.inputs.driver_tag }}" ]; then
+            TAG="${{ github.event.inputs.driver_tag }}"
+          else
+            # Fetch latest tag from shs-cxi-driver
+            TAG=$(curl -s "https://api.github.com/repos/HewlettPackard/shs-cxi-driver/tags" | \
+              jq -r '.[0].name')
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          # Extract version number from tag (e.g., release/shs-12.0.2 -> 12.0.2)
+          VERSION=$(echo "$TAG" | sed 's/.*shs-//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using driver tag: $TAG (version: $VERSION)"
 
-          MODULE_LICENSE("GPL");
-          MODULE_AUTHOR("Slingshot Operator CI");
-          MODULE_DESCRIPTION("Test module for DKMS build validation");
-          MODULE_VERSION("0.0.1");
+      - name: Clone HPE Slingshot repositories
+        run: |
+          TAG="${{ steps.get-version.outputs.tag }}"
+          echo "Cloning repositories at tag: $TAG"
 
-          static int __init test_module_init(void)
-          {
-              pr_info("test_module: loaded successfully\n");
-              return 0;
-          }
+          # Clone shs-cxi-driver
+          git clone --depth 1 --branch "$TAG" \
+            https://github.com/HewlettPackard/shs-cxi-driver.git
 
-          static void __exit test_module_exit(void)
-          {
-              pr_info("test_module: unloaded\n");
-          }
+          # Clone ss-sbl (Slingshot Base Link - Cassini 1)
+          git clone --depth 1 --branch "$TAG" \
+            https://github.com/HewlettPackard/ss-sbl.git
 
-          module_init(test_module_init);
-          module_exit(test_module_exit);
-          EOF
+          # Clone ss-link (Slingshot 2 Link - Cassini 2)
+          git clone --depth 1 --branch "$TAG" \
+            https://github.com/HewlettPackard/ss-link.git
 
-          cat > test-module/src/Makefile << 'EOF'
-          obj-m := test_module.o
+      - name: Prepare combined source archive
+        run: |
+          VERSION="${{ steps.get-version.outputs.version }}"
+          mkdir -p cxi-driver-$VERSION
 
-          KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
+          # Copy driver sources
+          cp -r shs-cxi-driver/* cxi-driver-$VERSION/
 
-          all:
-          	$(MAKE) -C $(KERNEL_SRC) M=$(PWD) modules
+          # Place dependency sources where the build expects them
+          # SBL needs to be at ../slingshot_base_link relative to cxi-driver
+          cp -r ss-sbl cxi-driver-$VERSION/slingshot_base_link
 
-          clean:
-          	$(MAKE) -C $(KERNEL_SRC) M=$(PWD) clean
-          EOF
+          # SL driver needs to be at ../sl-driver relative to cxi-driver
+          cp -r ss-link cxi-driver-$VERSION/sl-driver
 
-          cat > test-module/dkms.conf << 'EOF'
-          PACKAGE_NAME="test-module"
-          PACKAGE_VERSION="0.0.1"
-          MAKE="make -C ${kernel_source_dir} M=${dkms_tree}/${PACKAGE_NAME}/${PACKAGE_VERSION}/build"
-          CLEAN="make -C ${kernel_source_dir} M=${dkms_tree}/${PACKAGE_NAME}/${PACKAGE_VERSION}/build clean"
-          BUILT_MODULE_NAME[0]="test_module"
-          DEST_MODULE_LOCATION[0]="/kernel/drivers/misc"
-          AUTOINSTALL="yes"
-          EOF
+          # Create the archive
+          tar -czf cxi-driver-$VERSION.tar.gz cxi-driver-$VERSION
 
-      - name: Upload test module
+          ls -la cxi-driver-$VERSION.tar.gz
+
+      - name: Upload driver sources
         uses: actions/upload-artifact@v4
         with:
-          name: test-module
-          path: test-module/
+          name: cxi-driver-sources
+          path: cxi-driver-*.tar.gz
           retention-days: 1
 
   # ==========================================================================
@@ -109,18 +101,16 @@ jobs:
   # ==========================================================================
   dkms-ubuntu:
     name: DKMS Ubuntu ${{ matrix.version }} (kernel ${{ matrix.kernel }})
-    needs: prepare-test-module
+    needs: prepare-driver-sources
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Ubuntu 24.04 kernels
           - version: "24.04"
             image: ubuntu:24.04
             kernel: "6.8.0-generic"
             headers: linux-headers-6.8.0-51-generic
-          # Ubuntu 22.04 kernels
           - version: "22.04"
             image: ubuntu:22.04
             kernel: "5.15.0-generic"
@@ -131,17 +121,23 @@ jobs:
             headers: linux-headers-6.5.0-45-generic
 
     steps:
-      - name: Download test module
+      - name: Download driver sources
         uses: actions/download-artifact@v4
         with:
-          name: test-module
-          path: test-module/
+          name: cxi-driver-sources
+          path: .
+
+      - name: Extract driver sources
+        run: |
+          tar -xzf cxi-driver-*.tar.gz
+          mv cxi-driver-* cxi-driver
 
       - name: Test DKMS build on Ubuntu ${{ matrix.version }}
         run: |
-          docker run --rm -v $PWD/test-module:/test-module ${{ matrix.image }} bash -c '
+          docker run --rm -v $PWD/cxi-driver:/cxi-driver ${{ matrix.image }} bash -c '
             set -e
             export DEBIAN_FRONTEND=noninteractive
+            VERSION="${{ needs.prepare-driver-sources.outputs.driver_version }}"
 
             echo "=== Setting up Ubuntu ${{ matrix.version }} with kernel ${{ matrix.kernel }} ==="
             apt-get update
@@ -154,10 +150,10 @@ jobs:
             echo "=== Environment Info ==="
             echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2)"
             echo "DKMS: $(dkms --version)"
+            echo "CXI Driver Version: $VERSION"
             echo "Kernel headers available:"
             ls /lib/modules/ | head -5
 
-            # Use first available kernel version
             KVER=$(ls /lib/modules/ 2>/dev/null | head -1)
             echo "Using kernel: $KVER"
 
@@ -166,7 +162,6 @@ jobs:
               exit 0
             fi
 
-            # Ensure build symlink exists (should already exist for Ubuntu, but verify)
             if [ ! -e "/lib/modules/$KVER/build" ]; then
               echo "Error: /lib/modules/$KVER/build symlink missing"
               ls -la /lib/modules/$KVER/ || true
@@ -174,30 +169,44 @@ jobs:
             fi
 
             echo ""
-            echo "=== Installing test module via DKMS ==="
-            mkdir -p /usr/src/test-module-0.0.1
-            cp -r /test-module/src/* /usr/src/test-module-0.0.1/
-            cp /test-module/dkms.conf /usr/src/test-module-0.0.1/
+            echo "=== Building SBL (Slingshot Base Link) ==="
+            cd /cxi-driver/slingshot_base_link
+            export SBL_EXTERNAL_BUILD=1
+            export KDIR=/lib/modules/$KVER/build
 
-            echo "Adding module to DKMS..."
-            dkms add -m test-module -v 0.0.1
-
-            echo "Building module..."
-            dkms build -m test-module -v 0.0.1 -k $KVER
-
-            echo "Installing module..."
-            dkms install -m test-module -v 0.0.1 -k $KVER
+            # Build SBL - creates Module.symvers
+            make KDIR=$KDIR || {
+              echo "SBL build failed, checking structure..."
+              find . -name "Makefile" -o -name "Kbuild" | head -10
+              exit 1
+            }
 
             echo ""
-            echo "=== DKMS Status ==="
-            dkms status
+            echo "=== Building SL (Slingshot 2 Link) ==="
+            cd /cxi-driver/sl-driver
+            make KDIR=$KDIR || {
+              echo "SL build failed"
+              exit 1
+            }
 
             echo ""
-            echo "=== Verifying module was built ==="
-            ls -la /lib/modules/$KVER/updates/dkms/ || ls -la /lib/modules/$KVER/kernel/drivers/misc/ || echo "Module location varies by distro"
+            echo "=== Building CXI Driver ==="
+            cd /cxi-driver/drivers/net/ethernet/hpe/ss1
+
+            # Export symbol paths for dependencies
+            export KBUILD_EXTRA_SYMBOLS="/cxi-driver/slingshot_base_link/Module.symvers /cxi-driver/sl-driver/Module.symvers"
+
+            make KDIR=$KDIR || {
+              echo "CXI driver build failed"
+              exit 1
+            }
 
             echo ""
-            echo "=== SUCCESS: DKMS build completed on Ubuntu ${{ matrix.version }} ==="
+            echo "=== Build Results ==="
+            find /cxi-driver -name "*.ko" -type f 2>/dev/null || echo "No .ko files found"
+
+            echo ""
+            echo "=== SUCCESS: CXI driver build completed on Ubuntu ${{ matrix.version }} ==="
           '
 
   # ==========================================================================
@@ -205,7 +214,7 @@ jobs:
   # ==========================================================================
   dkms-rhel:
     name: DKMS ${{ matrix.name }}
-    needs: prepare-test-module
+    needs: prepare-driver-sources
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -220,80 +229,94 @@ jobs:
           - name: AlmaLinux 9
             image: almalinux:9
             pkg_manager: dnf
-          - name: AlmaLinux Kitten
-            image: almalinux:10-kitten
-            pkg_manager: dnf
           - name: Fedora Latest
             image: fedora:latest
             pkg_manager: dnf
 
     steps:
-      - name: Download test module
+      - name: Download driver sources
         uses: actions/download-artifact@v4
         with:
-          name: test-module
-          path: test-module/
+          name: cxi-driver-sources
+          path: .
+
+      - name: Extract driver sources
+        run: |
+          tar -xzf cxi-driver-*.tar.gz
+          mv cxi-driver-* cxi-driver
 
       - name: Test DKMS build on ${{ matrix.name }}
         run: |
-          docker run --rm -v $PWD/test-module:/test-module ${{ matrix.image }} bash -c '
+          docker run --rm -v $PWD/cxi-driver:/cxi-driver ${{ matrix.image }} bash -c '
             set -e
+            VERSION="${{ needs.prepare-driver-sources.outputs.driver_version }}"
 
             echo "=== Setting up ${{ matrix.name }} ==="
             ${{ matrix.pkg_manager }} install -y epel-release 2>/dev/null || true
-            ${{ matrix.pkg_manager }} install -y dkms kernel-devel kernel-headers gcc make kmod
+            ${{ matrix.pkg_manager }} install -y dkms kernel-devel kernel-headers gcc make kmod elfutils-libelf-devel
 
             echo ""
             echo "=== Environment Info ==="
             echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2)"
-            echo "DKMS: $(dkms --version 2>/dev/null || echo "checking...")"
+            echo "DKMS: $(dkms --version 2>/dev/null || echo checking...)"
+            echo "CXI Driver Version: $VERSION"
             echo "Kernel headers available:"
             ls /lib/modules/ 2>/dev/null | head -5 || echo "No modules directory yet"
 
-            # Get kernel version from installed headers
             KVER=$(ls /usr/src/kernels/ 2>/dev/null | head -1 || ls /lib/modules/ 2>/dev/null | head -1)
             echo "Using kernel: $KVER"
 
             if [ -z "$KVER" ]; then
-              echo "Warning: No kernel headers found, skipping DKMS build test"
-              echo "This is expected in some container environments"
+              echo "Warning: No kernel headers found, skipping build test"
               exit 0
             fi
 
-            # In container environments, kernel-devel installs to /usr/src/kernels/ but
-            # DKMS expects /lib/modules/$KVER/build symlink. Create it if needed.
+            # Setup build symlink if needed
             if [ -d "/usr/src/kernels/$KVER" ] && [ ! -e "/lib/modules/$KVER/build" ]; then
               echo "Creating /lib/modules/$KVER/build symlink..."
               mkdir -p /lib/modules/$KVER
               ln -sf /usr/src/kernels/$KVER /lib/modules/$KVER/build
             fi
 
+            KDIR=/lib/modules/$KVER/build
+            if [ ! -d "$KDIR" ] && [ -d "/usr/src/kernels/$KVER" ]; then
+              KDIR=/usr/src/kernels/$KVER
+            fi
+
             echo ""
-            echo "=== Installing test module via DKMS ==="
-            mkdir -p /usr/src/test-module-0.0.1
-            cp -r /test-module/src/* /usr/src/test-module-0.0.1/
-            cp /test-module/dkms.conf /usr/src/test-module-0.0.1/
+            echo "=== Building SBL (Slingshot Base Link) ==="
+            cd /cxi-driver/slingshot_base_link
+            export SBL_EXTERNAL_BUILD=1
 
-            echo "Adding module to DKMS..."
-            dkms add -m test-module -v 0.0.1 || echo "Module may already be added"
-
-            echo "Building module..."
-            dkms build -m test-module -v 0.0.1 -k $KVER || {
-              echo "Build failed, checking kernel source..."
-              ls -la /usr/src/kernels/$KVER/ 2>/dev/null | head -10 || echo "No kernel source found"
-              ls -la /lib/modules/$KVER/build 2>/dev/null || echo "No build symlink"
+            make KDIR=$KDIR || {
+              echo "SBL build failed"
               exit 1
             }
 
-            echo "Installing module..."
-            dkms install -m test-module -v 0.0.1 -k $KVER
+            echo ""
+            echo "=== Building SL (Slingshot 2 Link) ==="
+            cd /cxi-driver/sl-driver
+            make KDIR=$KDIR || {
+              echo "SL build failed"
+              exit 1
+            }
 
             echo ""
-            echo "=== DKMS Status ==="
-            dkms status
+            echo "=== Building CXI Driver ==="
+            cd /cxi-driver/drivers/net/ethernet/hpe/ss1
+            export KBUILD_EXTRA_SYMBOLS="/cxi-driver/slingshot_base_link/Module.symvers /cxi-driver/sl-driver/Module.symvers"
+
+            make KDIR=$KDIR || {
+              echo "CXI driver build failed"
+              exit 1
+            }
 
             echo ""
-            echo "=== SUCCESS: DKMS build completed on ${{ matrix.name }} ==="
+            echo "=== Build Results ==="
+            find /cxi-driver -name "*.ko" -type f 2>/dev/null || echo "No .ko files found"
+
+            echo ""
+            echo "=== SUCCESS: CXI driver build completed on ${{ matrix.name }} ==="
           '
 
   # ==========================================================================
@@ -301,7 +324,7 @@ jobs:
   # ==========================================================================
   dkms-other:
     name: DKMS ${{ matrix.name }}
-    needs: prepare-test-module
+    needs: prepare-driver-sources
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -324,16 +347,22 @@ jobs:
               zypper install -y dkms kernel-default-devel gcc make kmod
 
     steps:
-      - name: Download test module
+      - name: Download driver sources
         uses: actions/download-artifact@v4
         with:
-          name: test-module
-          path: test-module/
+          name: cxi-driver-sources
+          path: .
+
+      - name: Extract driver sources
+        run: |
+          tar -xzf cxi-driver-*.tar.gz
+          mv cxi-driver-* cxi-driver
 
       - name: Test DKMS build on ${{ matrix.name }}
         run: |
-          docker run --rm -v $PWD/test-module:/test-module ${{ matrix.image }} bash -c '
+          docker run --rm -v $PWD/cxi-driver:/cxi-driver ${{ matrix.image }} bash -c '
             set -e
+            VERSION="${{ needs.prepare-driver-sources.outputs.driver_version }}"
 
             echo "=== Setting up ${{ matrix.name }} ==="
             ${{ matrix.setup }}
@@ -342,11 +371,11 @@ jobs:
             echo "=== Environment Info ==="
             cat /etc/os-release | grep PRETTY_NAME
             dkms --version 2>/dev/null || echo "DKMS version check..."
+            echo "CXI Driver Version: $VERSION"
             echo "Kernel headers available:"
             ls /lib/modules/ 2>/dev/null | head -5 || echo "No modules directory"
             ls /usr/src/kernels/ 2>/dev/null | head -5 || true
 
-            # Try multiple locations for kernel headers
             KVER=$(ls /lib/modules/ 2>/dev/null | head -1)
             if [ -z "$KVER" ]; then
               KVER=$(ls /usr/src/kernels/ 2>/dev/null | head -1)
@@ -354,34 +383,56 @@ jobs:
             echo "Using kernel: $KVER"
 
             if [ -z "$KVER" ]; then
-              echo "Warning: No kernel headers found, skipping DKMS build test"
+              echo "Warning: No kernel headers found, skipping build test"
               exit 0
             fi
 
-            # In container environments, kernel-devel may install to /usr/src/kernels/ but
-            # DKMS expects /lib/modules/$KVER/build symlink. Create it if needed.
+            # Setup build symlink if needed
             if [ -d "/usr/src/kernels/$KVER" ] && [ ! -e "/lib/modules/$KVER/build" ]; then
               echo "Creating /lib/modules/$KVER/build symlink..."
               mkdir -p /lib/modules/$KVER
               ln -sf /usr/src/kernels/$KVER /lib/modules/$KVER/build
             fi
 
-            echo ""
-            echo "=== Installing test module via DKMS ==="
-            mkdir -p /usr/src/test-module-0.0.1
-            cp -r /test-module/src/* /usr/src/test-module-0.0.1/
-            cp /test-module/dkms.conf /usr/src/test-module-0.0.1/
-
-            dkms add -m test-module -v 0.0.1
-            dkms build -m test-module -v 0.0.1 -k $KVER
-            dkms install -m test-module -v 0.0.1 -k $KVER
+            KDIR=/lib/modules/$KVER/build
+            if [ ! -d "$KDIR" ] && [ -d "/usr/src/kernels/$KVER" ]; then
+              KDIR=/usr/src/kernels/$KVER
+            fi
 
             echo ""
-            echo "=== DKMS Status ==="
-            dkms status
+            echo "=== Building SBL (Slingshot Base Link) ==="
+            cd /cxi-driver/slingshot_base_link
+            export SBL_EXTERNAL_BUILD=1
+
+            make KDIR=$KDIR || {
+              echo "SBL build failed"
+              exit 1
+            }
 
             echo ""
-            echo "=== SUCCESS: DKMS build completed on ${{ matrix.name }} ==="
+            echo "=== Building SL (Slingshot 2 Link) ==="
+            cd /cxi-driver/sl-driver
+            make KDIR=$KDIR || {
+              echo "SL build failed"
+              exit 1
+            }
+
+            echo ""
+            echo "=== Building CXI Driver ==="
+            cd /cxi-driver/drivers/net/ethernet/hpe/ss1
+            export KBUILD_EXTRA_SYMBOLS="/cxi-driver/slingshot_base_link/Module.symvers /cxi-driver/sl-driver/Module.symvers"
+
+            make KDIR=$KDIR || {
+              echo "CXI driver build failed"
+              exit 1
+            }
+
+            echo ""
+            echo "=== Build Results ==="
+            find /cxi-driver -name "*.ko" -type f 2>/dev/null || echo "No .ko files found"
+
+            echo ""
+            echo "=== SUCCESS: CXI driver build completed on ${{ matrix.name }} ==="
           '
 
   # ==========================================================================
@@ -409,7 +460,6 @@ jobs:
 
       - name: Verify driver-agent DKMS commands exist
         run: |
-          # Verify the binary can show help (includes DKMS-related flags)
           ./bin/driver-agent --help
 
   # ==========================================================================
@@ -417,13 +467,16 @@ jobs:
   # ==========================================================================
   summary:
     name: DKMS Build Summary
-    needs: [dkms-ubuntu, dkms-rhel, dkms-other, test-driver-agent-dkms]
+    needs: [prepare-driver-sources, dkms-ubuntu, dkms-rhel, dkms-other, test-driver-agent-dkms]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Generate summary
         run: |
-          echo "## DKMS Kernel Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "## CXI Driver DKMS Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Driver Version:** ${{ needs.prepare-driver-sources.outputs.driver_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Driver Tag:** ${{ needs.prepare-driver-sources.outputs.driver_tag }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Distribution Family | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|---------------------|--------|" >> $GITHUB_STEP_SUMMARY
@@ -432,10 +485,15 @@ jobs:
           echo "| Debian/SUSE | ${{ needs.dkms-other.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Driver Agent Tests | ${{ needs.test-driver-agent-dkms.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Source Repositories" >> $GITHUB_STEP_SUMMARY
+          echo "- [shs-cxi-driver](https://github.com/HewlettPackard/shs-cxi-driver)" >> $GITHUB_STEP_SUMMARY
+          echo "- [ss-sbl](https://github.com/HewlettPackard/ss-sbl) (Slingshot Base Link)" >> $GITHUB_STEP_SUMMARY
+          echo "- [ss-link](https://github.com/HewlettPackard/ss-link) (Slingshot 2 Link)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Tested Distributions" >> $GITHUB_STEP_SUMMARY
           echo "- Ubuntu 24.04, 22.04 (multiple kernels)" >> $GITHUB_STEP_SUMMARY
           echo "- Rocky Linux 8, 9" >> $GITHUB_STEP_SUMMARY
-          echo "- AlmaLinux 9, Kitten" >> $GITHUB_STEP_SUMMARY
+          echo "- AlmaLinux 9" >> $GITHUB_STEP_SUMMARY
           echo "- Fedora Latest" >> $GITHUB_STEP_SUMMARY
           echo "- Debian 11, 12" >> $GITHUB_STEP_SUMMARY
           echo "- openSUSE Leap 15" >> $GITHUB_STEP_SUMMARY

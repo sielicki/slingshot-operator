@@ -33,6 +33,7 @@ func main() {
 	var namespace string
 	var driverSource string
 	var dkmsSourceURL string
+	var dkmsTag string
 	var prebuiltURL string
 	var healthPort int
 	var pollInterval time.Duration
@@ -44,7 +45,9 @@ func main() {
 	flag.StringVar(&driverSource, "driver-source", "preinstalled",
 		"Driver source: 'dkms', 'prebuilt', or 'preinstalled'")
 	flag.StringVar(&dkmsSourceURL, "dkms-source-url", "",
-		"URL to download DKMS source tarball (required for dkms mode)")
+		"URL to download DKMS source tarball (legacy single-repo mode)")
+	flag.StringVar(&dkmsTag, "dkms-tag", os.Getenv("DKMS_TAG"),
+		"HPE Slingshot release tag (e.g., release/shs-12.0.2) for multi-repo mode")
 	flag.StringVar(&prebuiltURL, "prebuilt-url", "",
 		"Base URL for prebuilt kernel modules (required for prebuilt mode)")
 	flag.IntVar(&healthPort, "health-port", 8081,
@@ -66,6 +69,11 @@ func main() {
 	fmt.Printf("  Node: %s\n", nodeName)
 	fmt.Printf("  Namespace: %s\n", namespace)
 	fmt.Printf("  Driver source: %s\n", driverSource)
+	if dkmsTag != "" {
+		fmt.Printf("  DKMS tag: %s\n", dkmsTag)
+	} else if dkmsSourceURL != "" {
+		fmt.Printf("  DKMS source URL: %s\n", dkmsSourceURL)
+	}
 	fmt.Printf("  Health port: %d\n", healthPort)
 	fmt.Printf("  Poll interval: %s\n", pollInterval)
 
@@ -74,6 +82,7 @@ func main() {
 		Namespace:     namespace,
 		DriverSource:  driveragent.DriverSource(driverSource),
 		DKMSSourceURL: dkmsSourceURL,
+		DKMSTag:       dkmsTag,
 		PrebuiltURL:   prebuiltURL,
 		HealthPort:    healthPort,
 		PollInterval:  pollInterval,

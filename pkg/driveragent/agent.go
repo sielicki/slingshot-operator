@@ -66,15 +66,23 @@ type Config struct {
 	NodeName        string
 	Namespace       string
 	DriverSource    DriverSource
-	DKMSSourceURL   string // URL to driver source (GitHub zip or tarball)
+	DKMSSourceURL   string // URL to driver source (GitHub zip or tarball) - legacy single-repo mode
 	DKMSPkgName     string // DKMS package name (default: "cxi-driver")
 	DKMSPkgVersion  string // DKMS package version (auto-detected from URL if empty)
+	DKMSTag         string // HPE Slingshot release tag (e.g., "release/shs-12.0.2") - multi-repo mode
 	PrebuiltURL     string
 	HealthPort      int
 	PollInterval    time.Duration
 	SwitchIDMask    uint32 // Mask for extracting switch ID from NID (default: 0xfffc0)
 	DisableLabeling bool   // Disable node labeling for topology awareness (default: false, labeling enabled)
 }
+
+// HPE Slingshot repository URL templates (derived from tag)
+const (
+	cxiDriverRepoURL = "https://github.com/HewlettPackard/shs-cxi-driver/archive/refs/tags/%s.tar.gz"
+	sblRepoURL       = "https://github.com/HewlettPackard/ss-sbl/archive/refs/tags/%s.tar.gz"
+	slRepoURL        = "https://github.com/HewlettPackard/ss-link/archive/refs/tags/%s.tar.gz"
+)
 
 type Agent struct {
 	config      Config
@@ -159,8 +167,62 @@ func (a *Agent) ensureDriver(ctx context.Context) error {
 func (a *Agent) installDKMS(ctx context.Context) error {
 	a.log.Info("Installing driver via DKMS")
 
+	// Use multi-repo mode if DKMSTag is set
+	if a.config.DKMSTag != "" {
+		return a.installDKMSMultiRepo(ctx)
+	}
+
+	// Legacy single-repo mode
+	return a.installDKMSLegacy(ctx)
+}
+
+// installDKMSMultiRepo builds the CXI driver with its dependencies (SBL, SL)
+func (a *Agent) installDKMSMultiRepo(ctx context.Context) error {
+	tag := a.config.DKMSTag
+
+	a.log.Info("Building HPE Slingshot driver stack", "tag", tag)
+
+	// 1. Download and build SBL (Slingshot Base Link)
+	sblURL := fmt.Sprintf(sblRepoURL, tag)
+	a.log.Info("Building SBL dependency", "url", sblURL)
+	if err := a.buildDependency("sbl", sblURL); err != nil {
+		return fmt.Errorf("building SBL: %w", err)
+	}
+
+	// 2. Download and build SL (Slingshot 2 Link)
+	slURL := fmt.Sprintf(slRepoURL, tag)
+	a.log.Info("Building SL dependency", "url", slURL)
+	if err := a.buildDependency("sl", slURL); err != nil {
+		return fmt.Errorf("building SL: %w", err)
+	}
+
+	// 3. Download and build CXI driver with dependency symvers
+	cxiURL := fmt.Sprintf(cxiDriverRepoURL, tag)
+	a.log.Info("Building CXI driver", "url", cxiURL)
+	if err := a.buildCXIDriver(cxiURL); err != nil {
+		return fmt.Errorf("building CXI driver: %w", err)
+	}
+
+	// Load the modules
+	if err := loadModule("cxi_ss1"); err != nil {
+		return fmt.Errorf("failed to load cxi_ss1: %w", err)
+	}
+
+	if err := loadModule("cxi_user"); err != nil {
+		a.log.V(1).Info("cxi_user not loaded (may be auto-loaded by udev)", "error", err)
+	}
+
+	a.setDriverReady(true)
+	a.log.Info("DKMS multi-repo driver installation complete", "tag", tag)
+	return nil
+}
+
+// installDKMSLegacy is the original single-URL DKMS installation
+//
+//nolint:unparam // ctx reserved for cancellation support
+func (a *Agent) installDKMSLegacy(ctx context.Context) error {
 	if a.config.DKMSSourceURL == "" {
-		return fmt.Errorf("DKMS source URL not configured")
+		return fmt.Errorf("DKMS source URL not configured (set DKMSTag or DKMSSourceURL)")
 	}
 
 	sourcePath := "/tmp/cxi-driver"
