@@ -8,6 +8,10 @@ on:
   # Allow manual trigger
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   GO_VERSION: '1.25'
 
@@ -251,6 +255,7 @@ jobs:
           file: Dockerfile.dkms-test
           target: ${{ matrix.target }}
           push: false
+          load: true
           tags: slingshot-operator-dkms:${{ matrix.target }}
           cache-from: type=gha,scope=${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}

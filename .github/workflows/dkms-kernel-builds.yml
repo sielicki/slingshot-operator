@@ -25,6 +25,10 @@ on:
         required: false
         default: '0.0.1-test'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   GO_VERSION: '1.25'
 
