@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -o retry-handler ./cmd/retry-handler
 # =============================================================================
 FROM rockylinux:9 AS rocky9-dkms
 RUN dnf install -y epel-release && \
-    dnf install -y \
+    dnf install -y --allowerasing \
     dkms \
     kernel-devel \
     kernel-headers \
@@ -149,10 +149,11 @@ RUN uname -r && dkms --version
 WORKDIR /build
 
 # =============================================================================
-# Amazon Linux 2023
+# AlmaLinux Kitten (rolling/development - tracks RHEL 10)
 # =============================================================================
-FROM amazonlinux:2023 AS amazonlinux2023-dkms
-RUN dnf install -y \
+FROM almalinux:10-kitten AS almalinux-kitten-dkms
+RUN dnf install -y epel-release && \
+    dnf install -y --allowerasing \
     dkms \
     kernel-devel \
     kernel-headers \
@@ -168,7 +169,7 @@ COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
 COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
 RUN driver-agent --help || true
 RUN retry-handler --help || true
-RUN uname -r && dkms --version || echo "DKMS version check skipped"
+RUN uname -r && dkms --version
 WORKDIR /build
 
 # =============================================================================

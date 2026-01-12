@@ -204,11 +204,11 @@ jobs:
           - name: AlmaLinux 9
             image: almalinux:9
             pkg_manager: dnf
+          - name: AlmaLinux Kitten
+            image: almalinux:10-kitten
+            pkg_manager: dnf
           - name: Fedora Latest
             image: fedora:latest
-            pkg_manager: dnf
-          - name: Amazon Linux 2023
-            image: amazonlinux:2023
             pkg_manager: dnf
 
     steps:
@@ -393,9 +393,8 @@ jobs:
           echo "### Tested Distributions" >> $GITHUB_STEP_SUMMARY
           echo "- Ubuntu 24.04, 22.04 (multiple kernels)" >> $GITHUB_STEP_SUMMARY
           echo "- Rocky Linux 8, 9" >> $GITHUB_STEP_SUMMARY
-          echo "- AlmaLinux 9" >> $GITHUB_STEP_SUMMARY
+          echo "- AlmaLinux 9, Kitten" >> $GITHUB_STEP_SUMMARY
           echo "- Fedora Latest" >> $GITHUB_STEP_SUMMARY
-          echo "- Amazon Linux 2023" >> $GITHUB_STEP_SUMMARY
           echo "- Debian 11, 12" >> $GITHUB_STEP_SUMMARY
           echo "- openSUSE Leap 15" >> $GITHUB_STEP_SUMMARY
 

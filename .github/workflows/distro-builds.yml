@@ -68,8 +68,8 @@ jobs:
             name: AlmaLinux 9
           - distro: almalinux:8
             name: AlmaLinux 8
-          - distro: amazonlinux:2023
-            name: Amazon Linux 2023
+          - distro: almalinux:10-kitten
+            name: AlmaLinux Kitten
           - distro: fedora:latest
             name: Fedora Latest
           - distro: fedora:40
@@ -230,6 +230,7 @@ jobs:
         target:
           - rocky9-dkms
           - rocky8-dkms
+          - almalinux-kitten-dkms
           - ubuntu2404-dkms
           - ubuntu2204-dkms
           - debian12-dkms
