@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/sielicki/slingshot-operator/branch/main/graph/badge.svg)](https://codecov.io/gh/sielicki/slingshot-operator)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sielicki/slingshot-operator)](https://goreportcard.com/report/github.com/sielicki/slingshot-operator)
 
-A Kubernetes operator for managing HPE Slingshot CXI (Cassini eXtended Interface) network driver lifecycle on HPC clusters.
+A Kubernetes operator for managing HPE Slingshot CXI network driver lifecycle on HPC clusters.
 
 ## Overview
 
@@ -479,7 +479,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## License
 
-Copyright 2024.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
