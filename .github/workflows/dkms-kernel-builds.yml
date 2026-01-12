@@ -176,7 +176,8 @@ jobs:
             export KDIR=/lib/modules/$KVER/build
 
             # Build SBL - creates Module.symvers
-            make KDIR=$KDIR || {
+            # PLATFORM_CASSINI_HW is required for Slingshot 200 series hardware
+            make KDIR=$KDIR PLATFORM_CASSINI_HW=1 || {
               echo "SBL build failed, checking structure..."
               find . -name "Makefile" -o -name "Kbuild" | head -10
               exit 1
@@ -290,7 +291,8 @@ jobs:
             cd /cxi-driver/slingshot_base_link
             export SBL_EXTERNAL_BUILD=1
 
-            make KDIR=$KDIR || {
+            # PLATFORM_CASSINI_HW is required for Slingshot 200 series hardware
+            make KDIR=$KDIR PLATFORM_CASSINI_HW=1 || {
               echo "SBL build failed"
               exit 1
             }
@@ -407,7 +409,8 @@ jobs:
             cd /cxi-driver/slingshot_base_link
             export SBL_EXTERNAL_BUILD=1
 
-            make KDIR=$KDIR || {
+            # PLATFORM_CASSINI_HW is required for Slingshot 200 series hardware
+            make KDIR=$KDIR PLATFORM_CASSINI_HW=1 || {
               echo "SBL build failed"
               exit 1
             }

@@ -396,10 +396,14 @@ spec:
 			_, err := utils.Run(exec.Command("sh", "-c", fmt.Sprintf("echo '%s' | kubectl apply -f -", firstDriverYAML)))
 			Expect(err).NotTo(HaveOccurred())
 
-			By("waiting for the first CXIDriver to become active")
+			By("waiting for the first CXIDriver to be processed by the controller")
 			verifyFirstActive := func(g Gomega) {
+				// Check DriverAgentReady condition which is set when DaemonSet is created
+				// This verifies the controller is processing this CXIDriver (not ignoring it)
+				// Note: We don't check Available=True because pods won't become ready
+				// in a test environment with restricted pod security policy
 				cmd := exec.Command("kubectl", "get", "cxidriver", "cxi-driver-first",
-					"-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}")
+					"-o", "jsonpath={.status.conditions[?(@.type=='DriverAgentReady')].status}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("True"))
@@ -468,10 +472,11 @@ spec:
 			_, err := utils.Run(exec.Command("sh", "-c", fmt.Sprintf("echo '%s' | kubectl apply -f -", firstDriverYAML)))
 			Expect(err).NotTo(HaveOccurred())
 
-			By("waiting for the first CXIDriver to become active")
+			By("waiting for the first CXIDriver to be processed by the controller")
 			verifyFirstActive := func(g Gomega) {
+				// Check DriverAgentReady condition which is set when DaemonSet is created
 				cmd := exec.Command("kubectl", "get", "cxidriver", "cxi-driver-primary",
-					"-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}")
+					"-o", "jsonpath={.status.conditions[?(@.type=='DriverAgentReady')].status}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("True"))
@@ -528,8 +533,9 @@ spec:
 
 			By("verifying the second CXIDriver becomes active")
 			verifySecondActive := func(g Gomega) {
+				// Check DriverAgentReady condition which is set when DaemonSet is created
 				cmd := exec.Command("kubectl", "get", "cxidriver", "cxi-driver-secondary",
-					"-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}")
+					"-o", "jsonpath={.status.conditions[?(@.type=='DriverAgentReady')].status}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("True"))
