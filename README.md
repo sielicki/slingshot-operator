@@ -236,7 +236,7 @@ flowchart LR
     subgraph DKMS["DKMS Installation (Multi-Repo)"]
         direction TB
         D0["Download repos:<br/>• shs-cassini-headers<br/>• ss-sbl<br/>• ss-link<br/>• shs-cxi-driver"] --> D1["Setup headers"]
-        D1 --> D2["Build SBL<br/>(PLATFORM_CASSINI_HW=1)"]
+        D1 --> D2["Build SBL"]
         D2 --> D3["Build SL"]
         D3 --> D4["Build CXI driver<br/>(with dependency symvers)"]
         D4 --> D5["dkms add/build/install"]
@@ -270,11 +270,34 @@ The DKMS driver source builds the HPE Slingshot driver stack from source. When y
 | `ss-link` | Slingshot 2 Link |
 | `shs-cassini-headers` | Required headers for build |
 
+**Simple configuration** using a release tag (recommended):
+
 ```yaml
 source:
   type: dkms
   dkms:
     tag: "release/shs-13.0.0"
+```
+
+**Custom repositories** for internal mirrors or forks:
+
+```yaml
+source:
+  type: dkms
+  dkms:
+    repositories:
+      cxiDriver:
+        url: "https://internal-git.example.com/shs-cxi-driver.git"
+        ref: "v13.0.0-custom"
+      sbl:
+        url: "https://internal-git.example.com/ss-sbl.git"
+        ref: "v13.0.0-custom"
+      slDriver:
+        url: "https://internal-git.example.com/ss-link.git"
+        ref: "v13.0.0-custom"
+      cassiniHeaders:
+        url: "https://internal-git.example.com/shs-cassini-headers.git"
+        ref: "v13.0.0-custom"
 ```
 
 ### Retry Handler Modes
