@@ -341,7 +341,7 @@ metadata:
   namespace: ` + namespace + `
 spec:
   version: "1.8.3"
-  driverSource:
+  source:
     type: preinstalled
   retryHandler:
     enabled: true

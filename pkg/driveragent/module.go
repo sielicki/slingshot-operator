@@ -25,7 +25,6 @@ import (
 	"strings"
 )
 
-
 func loadModule(name string) error {
 	cmd := exec.Command("modprobe", name)
 	cmd.Stdout = os.Stdout

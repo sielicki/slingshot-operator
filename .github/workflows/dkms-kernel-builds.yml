@@ -130,6 +130,7 @@ jobs:
       - name: Extract driver sources
         run: |
           tar -xzf cxi-driver-*.tar.gz
+          rm -f cxi-driver-*.tar.gz
           mv cxi-driver-* cxi-driver
 
       - name: Test DKMS build on Ubuntu ${{ matrix.version }}
@@ -243,6 +244,7 @@ jobs:
       - name: Extract driver sources
         run: |
           tar -xzf cxi-driver-*.tar.gz
+          rm -f cxi-driver-*.tar.gz
           mv cxi-driver-* cxi-driver
 
       - name: Test DKMS build on ${{ matrix.name }}
@@ -356,6 +358,7 @@ jobs:
       - name: Extract driver sources
         run: |
           tar -xzf cxi-driver-*.tar.gz
+          rm -f cxi-driver-*.tar.gz
           mv cxi-driver-* cxi-driver
 
       - name: Test DKMS build on ${{ matrix.name }}

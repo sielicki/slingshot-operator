@@ -177,6 +177,8 @@ func (a *Agent) installDKMS(ctx context.Context) error {
 }
 
 // installDKMSMultiRepo builds the CXI driver with its dependencies (SBL, SL)
+//
+//nolint:unparam // ctx reserved for cancellation support
 func (a *Agent) installDKMSMultiRepo(ctx context.Context) error {
 	tag := a.config.DKMSTag
 
