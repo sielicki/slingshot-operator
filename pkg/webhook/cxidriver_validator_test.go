@@ -37,10 +37,7 @@ func TestCXIDriverValidator_Handle_ValidDriver(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -75,10 +72,7 @@ func TestCXIDriverValidator_Handle_MissingVersion(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -110,10 +104,7 @@ func TestCXIDriverValidator_Handle_InvalidSemver(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	tests := []struct {
 		name       string
@@ -171,10 +162,7 @@ func TestCXIDriverValidator_Handle_DKMSMissingRepository(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -210,10 +198,7 @@ func TestCXIDriverValidator_Handle_PrebuiltMissingCache(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -249,10 +234,7 @@ func TestCXIDriverValidator_Handle_InvalidRetryHandlerMode(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -288,10 +270,7 @@ func TestCXIDriverValidator_Handle_InvalidDevicePluginSharingMode(t *testing.T) 
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -327,10 +306,7 @@ func TestCXIDriverValidator_Handle_InvalidHealthCheckTimeout(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -365,10 +341,7 @@ func TestCXIDriverValidator_Handle_HighSharedCapacityWarning(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -408,10 +381,7 @@ func TestCXIDriverValidator_Handle_KernelModeWarning(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	driver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -453,10 +423,7 @@ func TestCXIDriverValidator_Handle_UpdateResourceNameChangeWarning(t *testing.T)
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	oldDriver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -513,10 +480,7 @@ func TestCXIDriverValidator_Handle_UpdateModeChangeWarning(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	oldDriver := &cxiv1.CXIDriver{
 		ObjectMeta: metav1.ObjectMeta{
@@ -573,10 +537,7 @@ func TestCXIDriverValidator_Handle_DecodeError(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	req := admission.Request{
 		AdmissionRequest: admissionv1.AdmissionRequest{
@@ -601,10 +562,7 @@ func TestCXIDriverValidator_Handle_ValidRetryHandlerModes(t *testing.T) {
 	_ = cxiv1.AddToScheme(scheme)
 
 	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-	validator := NewCXIDriverValidator(client)
-
-	decoder := admission.NewDecoder(scheme)
-	_ = validator.InjectDecoder(decoder)
+	validator := NewCXIDriverValidator(client, scheme)
 
 	modes := []cxiv1.RetryHandlerMode{
 		cxiv1.RetryHandlerModeDaemonSet,

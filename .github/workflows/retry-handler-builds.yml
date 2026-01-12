@@ -153,6 +153,7 @@ jobs:
           context: .
           file: Dockerfile.retry-handler-${{ matrix.base }}
           push: false
+          load: true
           tags: retry-handler:${{ matrix.base }}
           cache-from: type=gha,scope=retry-handler-${{ matrix.base }}
           cache-to: type=gha,mode=max,scope=retry-handler-${{ matrix.base }}

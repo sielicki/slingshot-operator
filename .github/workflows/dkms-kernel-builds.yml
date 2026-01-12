@@ -158,8 +158,20 @@ jobs:
             ls /lib/modules/ | head -5
 
             # Use first available kernel version
-            KVER=$(ls /lib/modules/ | head -1)
+            KVER=$(ls /lib/modules/ 2>/dev/null | head -1)
             echo "Using kernel: $KVER"
+
+            if [ -z "$KVER" ]; then
+              echo "Warning: No kernel headers found, skipping DKMS build test"
+              exit 0
+            fi
+
+            # Ensure build symlink exists (should already exist for Ubuntu, but verify)
+            if [ ! -e "/lib/modules/$KVER/build" ]; then
+              echo "Error: /lib/modules/$KVER/build symlink missing"
+              ls -la /lib/modules/$KVER/ || true
+              exit 1
+            fi
 
             echo ""
             echo "=== Installing test module via DKMS ==="
@@ -248,6 +260,14 @@ jobs:
               exit 0
             fi
 
+            # In container environments, kernel-devel installs to /usr/src/kernels/ but
+            # DKMS expects /lib/modules/$KVER/build symlink. Create it if needed.
+            if [ -d "/usr/src/kernels/$KVER" ] && [ ! -e "/lib/modules/$KVER/build" ]; then
+              echo "Creating /lib/modules/$KVER/build symlink..."
+              mkdir -p /lib/modules/$KVER
+              ln -sf /usr/src/kernels/$KVER /lib/modules/$KVER/build
+            fi
+
             echo ""
             echo "=== Installing test module via DKMS ==="
             mkdir -p /usr/src/test-module-0.0.1
@@ -323,10 +343,28 @@ jobs:
             cat /etc/os-release | grep PRETTY_NAME
             dkms --version 2>/dev/null || echo "DKMS version check..."
             echo "Kernel headers available:"
-            ls /lib/modules/ | head -5
+            ls /lib/modules/ 2>/dev/null | head -5 || echo "No modules directory"
+            ls /usr/src/kernels/ 2>/dev/null | head -5 || true
 
-            KVER=$(ls /lib/modules/ | head -1)
+            # Try multiple locations for kernel headers
+            KVER=$(ls /lib/modules/ 2>/dev/null | head -1)
+            if [ -z "$KVER" ]; then
+              KVER=$(ls /usr/src/kernels/ 2>/dev/null | head -1)
+            fi
             echo "Using kernel: $KVER"
+
+            if [ -z "$KVER" ]; then
+              echo "Warning: No kernel headers found, skipping DKMS build test"
+              exit 0
+            fi
+
+            # In container environments, kernel-devel may install to /usr/src/kernels/ but
+            # DKMS expects /lib/modules/$KVER/build symlink. Create it if needed.
+            if [ -d "/usr/src/kernels/$KVER" ] && [ ! -e "/lib/modules/$KVER/build" ]; then
+              echo "Creating /lib/modules/$KVER/build symlink..."
+              mkdir -p /lib/modules/$KVER
+              ln -sf /usr/src/kernels/$KVER /lib/modules/$KVER/build
+            fi
 
             echo ""
             echo "=== Installing test module via DKMS ==="

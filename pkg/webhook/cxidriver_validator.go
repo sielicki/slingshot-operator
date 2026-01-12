@@ -24,6 +24,7 @@ import (
 	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -37,9 +38,10 @@ type CXIDriverValidator struct {
 	decoder admission.Decoder
 }
 
-func NewCXIDriverValidator(c client.Client) *CXIDriverValidator {
+func NewCXIDriverValidator(c client.Client, scheme *runtime.Scheme) *CXIDriverValidator {
 	return &CXIDriverValidator{
-		client: c,
+		client:  c,
+		decoder: admission.NewDecoder(scheme),
 	}
 }
 
@@ -167,7 +169,3 @@ func (v *CXIDriverValidator) Handle(ctx context.Context, req admission.Request) 
 	return admission.Allowed("")
 }
 
-func (v *CXIDriverValidator) InjectDecoder(d admission.Decoder) error {
-	v.decoder = d
-	return nil
-}

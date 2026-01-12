@@ -40,7 +40,7 @@ func SetupWithManager(mgr manager.Manager, config WebhookConfig) error {
 
 	// Register CXIDriver validator (validating webhook)
 	if config.EnableCXIDriverWebhook {
-		validator := NewCXIDriverValidator(mgr.GetClient())
+		validator := NewCXIDriverValidator(mgr.GetClient(), mgr.GetScheme())
 		mgr.GetWebhookServer().Register("/validate-cxi-hpe-com-v1-cxidriver", &webhook.Admission{
 			Handler: validator,
 		})
