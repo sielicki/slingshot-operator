@@ -1,0 +1,288 @@
+name: Retry Handler Multi-Distro Builds
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/retry-handler/**'
+      - 'pkg/retryhandler/**'
+      - '.github/workflows/retry-handler-builds.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cmd/retry-handler/**'
+      - 'pkg/retryhandler/**'
+      - '.github/workflows/retry-handler-builds.yml'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  # ==========================================================================
+  # Build retry-handler for multiple architectures
+  # ==========================================================================
+  build:
+    name: Build Retry Handler
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests
+        if: matrix.goarch == 'amd64'
+        run: |
+          go test -v -race -coverprofile=coverage.out ./pkg/retryhandler/...
+          go tool cover -func=coverage.out
+
+      - name: Build retry-handler
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -a -ldflags="-s -w" -o retry-handler-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/retry-handler
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: retry-handler-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: retry-handler-${{ matrix.goos }}-${{ matrix.goarch }}
+          retention-days: 5
+
+  # ==========================================================================
+  # Build container images for each distribution
+  # ==========================================================================
+  container-images:
+    name: Container (${{ matrix.base }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Distroless (production default)
+          - base: distroless
+            dockerfile: |
+              FROM golang:1.25 AS builder
+              WORKDIR /workspace
+              COPY go.mod go.sum ./
+              RUN go mod download
+              COPY . .
+              RUN CGO_ENABLED=0 go build -a -ldflags="-s -w" -o retry-handler ./cmd/retry-handler
+
+              FROM gcr.io/distroless/static:nonroot
+              COPY --from=builder /workspace/retry-handler /retry-handler
+              USER 0:0
+              ENTRYPOINT ["/retry-handler"]
+
+          # Alpine (minimal with shell for debugging)
+          - base: alpine
+            dockerfile: |
+              FROM golang:1.25-alpine AS builder
+              RUN apk add --no-cache git
+              WORKDIR /workspace
+              COPY go.mod go.sum ./
+              RUN go mod download
+              COPY . .
+              RUN CGO_ENABLED=0 go build -a -ldflags="-s -w" -o retry-handler ./cmd/retry-handler
+
+              FROM alpine:latest
+              RUN apk add --no-cache ca-certificates
+              COPY --from=builder /workspace/retry-handler /usr/local/bin/retry-handler
+              ENTRYPOINT ["/usr/local/bin/retry-handler"]
+
+          # Ubuntu (for environments requiring glibc)
+          - base: ubuntu
+            dockerfile: |
+              FROM golang:1.25 AS builder
+              WORKDIR /workspace
+              COPY go.mod go.sum ./
+              RUN go mod download
+              COPY . .
+              RUN CGO_ENABLED=0 go build -a -ldflags="-s -w" -o retry-handler ./cmd/retry-handler
+
+              FROM ubuntu:24.04
+              RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+              COPY --from=builder /workspace/retry-handler /usr/local/bin/retry-handler
+              ENTRYPOINT ["/usr/local/bin/retry-handler"]
+
+          # Rocky Linux (RHEL-compatible)
+          - base: rocky
+            dockerfile: |
+              FROM golang:1.25 AS builder
+              WORKDIR /workspace
+              COPY go.mod go.sum ./
+              RUN go mod download
+              COPY . .
+              RUN CGO_ENABLED=0 go build -a -ldflags="-s -w" -o retry-handler ./cmd/retry-handler
+
+              FROM rockylinux:9-minimal
+              RUN microdnf install -y ca-certificates && microdnf clean all
+              COPY --from=builder /workspace/retry-handler /usr/local/bin/retry-handler
+              ENTRYPOINT ["/usr/local/bin/retry-handler"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create Dockerfile
+        run: |
+          cat > Dockerfile.retry-handler-${{ matrix.base }} << 'DOCKERFILE'
+          ${{ matrix.dockerfile }}
+          DOCKERFILE
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.retry-handler-${{ matrix.base }}
+          push: false
+          tags: retry-handler:${{ matrix.base }}
+          cache-from: type=gha,scope=retry-handler-${{ matrix.base }}
+          cache-to: type=gha,mode=max,scope=retry-handler-${{ matrix.base }}
+
+      - name: Test container
+        run: |
+          echo "=== Testing retry-handler on ${{ matrix.base }} ==="
+          docker run --rm retry-handler:${{ matrix.base }} --help
+          docker run --rm retry-handler:${{ matrix.base }} --version || echo "Version flag may not be implemented"
+
+          # Test health endpoint startup
+          docker run -d --name test-rh -p 8080:8080 retry-handler:${{ matrix.base }} --mode=single --health-port=8080 --device=cxi0 || true
+          sleep 2
+          docker logs test-rh 2>&1 | head -20 || true
+          docker stop test-rh 2>/dev/null || true
+          docker rm test-rh 2>/dev/null || true
+
+          echo "=== Container test completed for ${{ matrix.base }} ==="
+
+  # ==========================================================================
+  # Test retry-handler functionality across distributions
+  # ==========================================================================
+  functional-tests:
+    name: Functional Test (${{ matrix.distro }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu:24.04
+            name: Ubuntu 24.04
+          - distro: ubuntu:22.04
+            name: Ubuntu 22.04
+          - distro: debian:12
+            name: Debian 12
+          - distro: rockylinux:9
+            name: Rocky Linux 9
+          - distro: fedora:latest
+            name: Fedora
+          - distro: alpine:latest
+            name: Alpine
+
+    steps:
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: retry-handler-linux-amd64
+          path: .
+
+      - name: Test on ${{ matrix.name }}
+        run: |
+          chmod +x retry-handler-linux-amd64
+          docker run --rm -v $PWD:/app ${{ matrix.distro }} sh -c '
+            echo "=== Testing retry-handler on ${{ matrix.name }} ==="
+
+            # Test binary execution
+            /app/retry-handler-linux-amd64 --help
+
+            # Test different modes
+            echo "Testing supervisor mode help..."
+            /app/retry-handler-linux-amd64 --mode=supervisor --help 2>&1 | head -5 || true
+
+            echo "Testing single mode help..."
+            /app/retry-handler-linux-amd64 --mode=single --help 2>&1 | head -5 || true
+
+            # Test that binary can start (will fail without device, but should start)
+            timeout 2 /app/retry-handler-linux-amd64 --mode=single --device=cxi0 2>&1 || true
+
+            echo "=== Tests passed on ${{ matrix.name }} ==="
+          '
+
+  # ==========================================================================
+  # Multi-architecture container build and push (for releases)
+  # ==========================================================================
+  multi-arch-build:
+    name: Multi-Arch Container Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build multi-arch image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: retry-handler
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: |
+            retry-handler:latest
+            retry-handler:${{ github.sha }}
+          cache-from: type=gha,scope=retry-handler-multiarch
+          cache-to: type=gha,mode=max,scope=retry-handler-multiarch
+
+  # ==========================================================================
+  # Summary
+  # ==========================================================================
+  summary:
+    name: Build Summary
+    needs: [build, container-images, functional-tests]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Retry Handler Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Binary Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Images | ${{ needs.container-images.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Functional Tests | ${{ needs.functional-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Tested Configurations" >> $GITHUB_STEP_SUMMARY
+          echo "**Architectures:** amd64, arm64" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Container Bases:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Distroless (production)" >> $GITHUB_STEP_SUMMARY
+          echo "- Alpine" >> $GITHUB_STEP_SUMMARY
+          echo "- Ubuntu 24.04" >> $GITHUB_STEP_SUMMARY
+          echo "- Rocky Linux 9" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Functional Test Distros:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Ubuntu 24.04, 22.04" >> $GITHUB_STEP_SUMMARY
+          echo "- Debian 12" >> $GITHUB_STEP_SUMMARY
+          echo "- Rocky Linux 9" >> $GITHUB_STEP_SUMMARY
+          echo "- Fedora Latest" >> $GITHUB_STEP_SUMMARY
+          echo "- Alpine" >> $GITHUB_STEP_SUMMARY

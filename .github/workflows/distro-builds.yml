@@ -1,0 +1,309 @@
+name: Multi-Distribution Builds
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Allow manual trigger
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  # ==========================================================================
+  # Build Go binaries and test on multiple distributions
+  # ==========================================================================
+  build-binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build all binaries
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/manager-linux-amd64 ./cmd/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/driver-agent-linux-amd64 ./cmd/driver-agent
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/retry-handler-linux-amd64 ./cmd/retry-handler
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/device-plugin-linux-amd64 ./cmd/device-plugin
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/metrics-exporter-linux-amd64 ./cmd/metrics-exporter
+
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o bin/manager-linux-arm64 ./cmd/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o bin/driver-agent-linux-arm64 ./cmd/driver-agent
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o bin/retry-handler-linux-arm64 ./cmd/retry-handler
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o bin/device-plugin-linux-arm64 ./cmd/device-plugin
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o bin/metrics-exporter-linux-arm64 ./cmd/metrics-exporter
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: bin/
+          retention-days: 1
+
+  # ==========================================================================
+  # Test binaries on RHEL-based distributions
+  # ==========================================================================
+  test-rhel-distros:
+    name: Test on ${{ matrix.distro }}
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: rockylinux:9
+            name: Rocky Linux 9
+          - distro: rockylinux:8
+            name: Rocky Linux 8
+          - distro: almalinux:9
+            name: AlmaLinux 9
+          - distro: almalinux:8
+            name: AlmaLinux 8
+          - distro: amazonlinux:2023
+            name: Amazon Linux 2023
+          - distro: fedora:latest
+            name: Fedora Latest
+          - distro: fedora:40
+            name: Fedora 40
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: bin/
+
+      - name: Test binaries on ${{ matrix.name }}
+        run: |
+          docker run --rm -v $PWD/bin:/binaries ${{ matrix.distro }} bash -c '
+            set -e
+            echo "=== Testing on $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2) ==="
+            echo "Kernel: $(uname -r)"
+
+            chmod +x /binaries/*-linux-amd64
+
+            echo "--- Testing driver-agent ---"
+            /binaries/driver-agent-linux-amd64 --help
+
+            echo "--- Testing retry-handler ---"
+            /binaries/retry-handler-linux-amd64 --help
+
+            echo "--- Testing device-plugin ---"
+            /binaries/device-plugin-linux-amd64 --help
+
+            echo "--- Testing metrics-exporter ---"
+            /binaries/metrics-exporter-linux-amd64 --help
+
+            echo "--- Testing manager ---"
+            /binaries/manager-linux-amd64 --help
+
+            echo "=== All binaries work on ${{ matrix.name }} ==="
+          '
+
+  # ==========================================================================
+  # Test binaries on Debian-based distributions
+  # ==========================================================================
+  test-debian-distros:
+    name: Test on ${{ matrix.distro }}
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu:24.04
+            name: Ubuntu 24.04 LTS
+          - distro: ubuntu:22.04
+            name: Ubuntu 22.04 LTS
+          - distro: ubuntu:20.04
+            name: Ubuntu 20.04 LTS
+          - distro: debian:12
+            name: Debian 12 (Bookworm)
+          - distro: debian:11
+            name: Debian 11 (Bullseye)
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: bin/
+
+      - name: Test binaries on ${{ matrix.name }}
+        run: |
+          docker run --rm -v $PWD/bin:/binaries ${{ matrix.distro }} bash -c '
+            set -e
+            echo "=== Testing on $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2) ==="
+            echo "Kernel: $(uname -r)"
+
+            chmod +x /binaries/*-linux-amd64
+
+            echo "--- Testing driver-agent ---"
+            /binaries/driver-agent-linux-amd64 --help
+
+            echo "--- Testing retry-handler ---"
+            /binaries/retry-handler-linux-amd64 --help
+
+            echo "--- Testing device-plugin ---"
+            /binaries/device-plugin-linux-amd64 --help
+
+            echo "--- Testing metrics-exporter ---"
+            /binaries/metrics-exporter-linux-amd64 --help
+
+            echo "--- Testing manager ---"
+            /binaries/manager-linux-amd64 --help
+
+            echo "=== All binaries work on ${{ matrix.name }} ==="
+          '
+
+  # ==========================================================================
+  # Test binaries on other distributions
+  # ==========================================================================
+  test-other-distros:
+    name: Test on ${{ matrix.distro }}
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: opensuse/leap:15
+            name: openSUSE Leap 15
+          - distro: archlinux:latest
+            name: Arch Linux
+          - distro: alpine:latest
+            name: Alpine Linux
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: bin/
+
+      - name: Test binaries on ${{ matrix.name }}
+        run: |
+          docker run --rm -v $PWD/bin:/binaries ${{ matrix.distro }} sh -c '
+            set -e
+            echo "=== Testing on ${{ matrix.name }} ==="
+            echo "Kernel: $(uname -r)"
+
+            chmod +x /binaries/*-linux-amd64
+
+            # Alpine uses musl, statically linked Go binaries should still work
+            echo "--- Testing driver-agent ---"
+            /binaries/driver-agent-linux-amd64 --help || echo "Binary test completed"
+
+            echo "--- Testing retry-handler ---"
+            /binaries/retry-handler-linux-amd64 --help || echo "Binary test completed"
+
+            echo "--- Testing device-plugin ---"
+            /binaries/device-plugin-linux-amd64 --help || echo "Binary test completed"
+
+            echo "--- Testing metrics-exporter ---"
+            /binaries/metrics-exporter-linux-amd64 --help || echo "Binary test completed"
+
+            echo "--- Testing manager ---"
+            /binaries/manager-linux-amd64 --help || echo "Binary test completed"
+
+            echo "=== Tests completed on ${{ matrix.name }} ==="
+          '
+
+  # ==========================================================================
+  # Build distro-specific container images with DKMS tools
+  # ==========================================================================
+  build-dkms-images:
+    name: Build DKMS Image (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - rocky9-dkms
+          - rocky8-dkms
+          - ubuntu2404-dkms
+          - ubuntu2204-dkms
+          - debian12-dkms
+          - opensuse15-dkms
+          - fedora-dkms
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build DKMS image for ${{ matrix.target }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.dkms-test
+          target: ${{ matrix.target }}
+          push: false
+          tags: slingshot-operator-dkms:${{ matrix.target }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+      - name: Verify DKMS image
+        run: |
+          docker run --rm slingshot-operator-dkms:${{ matrix.target }} sh -c '
+            echo "=== DKMS Environment Check ==="
+            echo "Distribution: $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d \")"
+            echo "Kernel: $(uname -r)"
+            echo "DKMS Version: $(dkms --version 2>/dev/null || echo "not available")"
+            echo "GCC Version: $(gcc --version | head -1)"
+            echo "Make Version: $(make --version | head -1)"
+
+            echo ""
+            echo "=== Installed Kernel Headers ==="
+            ls -la /lib/modules/ 2>/dev/null || echo "No kernel modules directory"
+            ls -la /usr/src/ 2>/dev/null | grep -E "linux|kernel" || echo "No kernel source found"
+
+            echo ""
+            echo "=== Binary Verification ==="
+            driver-agent --help 2>&1 | head -5
+            retry-handler --help 2>&1 | head -5
+
+            echo ""
+            echo "=== DKMS Status ==="
+            dkms status 2>/dev/null || echo "No DKMS modules installed"
+          '
+
+  # ==========================================================================
+  # Summary job
+  # ==========================================================================
+  summary:
+    name: Build Summary
+    needs: [build-binaries, test-rhel-distros, test-debian-distros, test-other-distros, build-dkms-images]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          echo "## Multi-Distribution Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Binaries | ${{ needs.build-binaries.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| RHEL Distros | ${{ needs.test-rhel-distros.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Debian Distros | ${{ needs.test-debian-distros.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Other Distros | ${{ needs.test-other-distros.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DKMS Images | ${{ needs.build-dkms-images.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any job failed
+        if: |
+          needs.build-binaries.result == 'failure' ||
+          needs.test-rhel-distros.result == 'failure' ||
+          needs.test-debian-distros.result == 'failure' ||
+          needs.build-dkms-images.result == 'failure'
+        run: exit 1

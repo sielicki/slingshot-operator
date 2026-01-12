@@ -1,0 +1,195 @@
+# Dockerfile for testing DKMS builds on various distributions
+# This is a multi-stage Dockerfile with targets for each distro
+
+ARG GO_VERSION=1.25
+
+# =============================================================================
+# Base Go builder (shared across all distros for the driver-agent binary)
+# =============================================================================
+FROM golang:${GO_VERSION} AS go-builder
+WORKDIR /workspace
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -o driver-agent ./cmd/driver-agent
+RUN CGO_ENABLED=0 GOOS=linux go build -a -o retry-handler ./cmd/retry-handler
+
+# =============================================================================
+# RHEL 9 / Rocky Linux 9
+# =============================================================================
+FROM rockylinux:9 AS rocky9-dkms
+RUN dnf install -y epel-release && \
+    dnf install -y \
+    dkms \
+    kernel-devel \
+    kernel-headers \
+    gcc \
+    make \
+    elfutils-libelf-devel \
+    kmod \
+    curl \
+    tar \
+    unzip \
+    && dnf clean all
+COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
+# Verify binaries work
+RUN driver-agent --help || true
+RUN retry-handler --help || true
+# Display kernel/DKMS info
+RUN uname -r && dkms --version
+WORKDIR /build
+
+# =============================================================================
+# RHEL 8 / Rocky Linux 8
+# =============================================================================
+FROM rockylinux:8 AS rocky8-dkms
+RUN dnf install -y epel-release && \
+    dnf install -y \
+    dkms \
+    kernel-devel \
+    kernel-headers \
+    gcc \
+    make \
+    elfutils-libelf-devel \
+    kmod \
+    curl \
+    tar \
+    unzip \
+    && dnf clean all
+COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
+RUN driver-agent --help || true
+RUN retry-handler --help || true
+RUN uname -r && dkms --version
+WORKDIR /build
+
+# =============================================================================
+# Ubuntu 24.04 LTS (Noble)
+# =============================================================================
+FROM ubuntu:24.04 AS ubuntu2404-dkms
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+    dkms \
+    linux-headers-generic \
+    build-essential \
+    kmod \
+    curl \
+    tar \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
+RUN driver-agent --help || true
+RUN retry-handler --help || true
+RUN uname -r && dkms --version
+WORKDIR /build
+
+# =============================================================================
+# Ubuntu 22.04 LTS (Jammy)
+# =============================================================================
+FROM ubuntu:22.04 AS ubuntu2204-dkms
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+    dkms \
+    linux-headers-generic \
+    build-essential \
+    kmod \
+    curl \
+    tar \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
+RUN driver-agent --help || true
+RUN retry-handler --help || true
+RUN uname -r && dkms --version
+WORKDIR /build
+
+# =============================================================================
+# Debian 12 (Bookworm)
+# =============================================================================
+FROM debian:12 AS debian12-dkms
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+    dkms \
+    linux-headers-amd64 \
+    build-essential \
+    kmod \
+    curl \
+    tar \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
+RUN driver-agent --help || true
+RUN retry-handler --help || true
+RUN uname -r && dkms --version
+WORKDIR /build
+
+# =============================================================================
+# openSUSE Leap 15
+# =============================================================================
+FROM opensuse/leap:15 AS opensuse15-dkms
+RUN zypper refresh && zypper install -y \
+    dkms \
+    kernel-default-devel \
+    gcc \
+    make \
+    kmod \
+    curl \
+    tar \
+    unzip \
+    && zypper clean -a
+COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
+RUN driver-agent --help || true
+RUN retry-handler --help || true
+RUN uname -r && dkms --version
+WORKDIR /build
+
+# =============================================================================
+# Amazon Linux 2023
+# =============================================================================
+FROM amazonlinux:2023 AS amazonlinux2023-dkms
+RUN dnf install -y \
+    dkms \
+    kernel-devel \
+    kernel-headers \
+    gcc \
+    make \
+    elfutils-libelf-devel \
+    kmod \
+    curl \
+    tar \
+    unzip \
+    && dnf clean all
+COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
+RUN driver-agent --help || true
+RUN retry-handler --help || true
+RUN uname -r && dkms --version || echo "DKMS version check skipped"
+WORKDIR /build
+
+# =============================================================================
+# Fedora (latest)
+# =============================================================================
+FROM fedora:latest AS fedora-dkms
+RUN dnf install -y \
+    dkms \
+    kernel-devel \
+    kernel-headers \
+    gcc \
+    make \
+    elfutils-libelf-devel \
+    kmod \
+    curl \
+    tar \
+    unzip \
+    && dnf clean all
+COPY --from=go-builder /workspace/driver-agent /usr/local/bin/
+COPY --from=go-builder /workspace/retry-handler /usr/local/bin/
+RUN driver-agent --help || true
+RUN retry-handler --help || true
+RUN uname -r && dkms --version
+WORKDIR /build

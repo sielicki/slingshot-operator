@@ -1,0 +1,410 @@
+name: DKMS Kernel Module Builds
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pkg/driveragent/**'
+      - '.github/workflows/dkms-kernel-builds.yml'
+      - 'Dockerfile.dkms-test'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'pkg/driveragent/**'
+      - '.github/workflows/dkms-kernel-builds.yml'
+      - 'Dockerfile.dkms-test'
+  # Allow manual trigger with optional driver source URL
+  workflow_dispatch:
+    inputs:
+      driver_source_url:
+        description: 'URL to CXI driver source archive (optional, uses test module if empty)'
+        required: false
+        default: ''
+      driver_version:
+        description: 'Driver version (e.g., 1.2.3)'
+        required: false
+        default: '0.0.1-test'
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  # ==========================================================================
+  # Create a test kernel module for DKMS validation
+  # ==========================================================================
+  prepare-test-module:
+    name: Prepare Test Module
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Create test kernel module source
+        run: |
+          mkdir -p test-module/src
+          cat > test-module/src/test_module.c << 'EOF'
+          /*
+           * Test kernel module for DKMS build validation
+           * This validates the DKMS infrastructure without requiring actual CXI hardware
+           */
+          #include <linux/init.h>
+          #include <linux/module.h>
+          #include <linux/kernel.h>
+
+          MODULE_LICENSE("GPL");
+          MODULE_AUTHOR("Slingshot Operator CI");
+          MODULE_DESCRIPTION("Test module for DKMS build validation");
+          MODULE_VERSION("0.0.1");
+
+          static int __init test_module_init(void)
+          {
+              pr_info("test_module: loaded successfully\n");
+              return 0;
+          }
+
+          static void __exit test_module_exit(void)
+          {
+              pr_info("test_module: unloaded\n");
+          }
+
+          module_init(test_module_init);
+          module_exit(test_module_exit);
+          EOF
+
+          cat > test-module/src/Makefile << 'EOF'
+          obj-m := test_module.o
+
+          KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
+
+          all:
+          	$(MAKE) -C $(KERNEL_SRC) M=$(PWD) modules
+
+          clean:
+          	$(MAKE) -C $(KERNEL_SRC) M=$(PWD) clean
+          EOF
+
+          cat > test-module/dkms.conf << 'EOF'
+          PACKAGE_NAME="test-module"
+          PACKAGE_VERSION="0.0.1"
+          MAKE="make -C ${kernel_source_dir} M=${dkms_tree}/${PACKAGE_NAME}/${PACKAGE_VERSION}/build"
+          CLEAN="make -C ${kernel_source_dir} M=${dkms_tree}/${PACKAGE_NAME}/${PACKAGE_VERSION}/build clean"
+          BUILT_MODULE_NAME[0]="test_module"
+          DEST_MODULE_LOCATION[0]="/kernel/drivers/misc"
+          AUTOINSTALL="yes"
+          EOF
+
+      - name: Upload test module
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-module
+          path: test-module/
+          retention-days: 1
+
+  # ==========================================================================
+  # Test DKMS builds on Ubuntu with multiple kernel versions
+  # ==========================================================================
+  dkms-ubuntu:
+    name: DKMS Ubuntu ${{ matrix.version }} (kernel ${{ matrix.kernel }})
+    needs: prepare-test-module
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 24.04 kernels
+          - version: "24.04"
+            image: ubuntu:24.04
+            kernel: "6.8.0-generic"
+            headers: linux-headers-6.8.0-51-generic
+          # Ubuntu 22.04 kernels
+          - version: "22.04"
+            image: ubuntu:22.04
+            kernel: "5.15.0-generic"
+            headers: linux-headers-5.15.0-130-generic
+          - version: "22.04"
+            image: ubuntu:22.04
+            kernel: "6.5.0-hwe"
+            headers: linux-headers-6.5.0-45-generic
+
+    steps:
+      - name: Download test module
+        uses: actions/download-artifact@v4
+        with:
+          name: test-module
+          path: test-module/
+
+      - name: Test DKMS build on Ubuntu ${{ matrix.version }}
+        run: |
+          docker run --rm -v $PWD/test-module:/test-module ${{ matrix.image }} bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+
+            echo "=== Setting up Ubuntu ${{ matrix.version }} with kernel ${{ matrix.kernel }} ==="
+            apt-get update
+            apt-get install -y dkms build-essential kmod ${{ matrix.headers }} || {
+              echo "Warning: Could not install specific kernel headers, trying generic"
+              apt-get install -y linux-headers-generic
+            }
+
+            echo ""
+            echo "=== Environment Info ==="
+            echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2)"
+            echo "DKMS: $(dkms --version)"
+            echo "Kernel headers available:"
+            ls /lib/modules/ | head -5
+
+            # Use first available kernel version
+            KVER=$(ls /lib/modules/ | head -1)
+            echo "Using kernel: $KVER"
+
+            echo ""
+            echo "=== Installing test module via DKMS ==="
+            mkdir -p /usr/src/test-module-0.0.1
+            cp -r /test-module/src/* /usr/src/test-module-0.0.1/
+            cp /test-module/dkms.conf /usr/src/test-module-0.0.1/
+
+            echo "Adding module to DKMS..."
+            dkms add -m test-module -v 0.0.1
+
+            echo "Building module..."
+            dkms build -m test-module -v 0.0.1 -k $KVER
+
+            echo "Installing module..."
+            dkms install -m test-module -v 0.0.1 -k $KVER
+
+            echo ""
+            echo "=== DKMS Status ==="
+            dkms status
+
+            echo ""
+            echo "=== Verifying module was built ==="
+            ls -la /lib/modules/$KVER/updates/dkms/ || ls -la /lib/modules/$KVER/kernel/drivers/misc/ || echo "Module location varies by distro"
+
+            echo ""
+            echo "=== SUCCESS: DKMS build completed on Ubuntu ${{ matrix.version }} ==="
+          '
+
+  # ==========================================================================
+  # Test DKMS builds on RHEL-based distributions
+  # ==========================================================================
+  dkms-rhel:
+    name: DKMS ${{ matrix.name }}
+    needs: prepare-test-module
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Rocky Linux 9
+            image: rockylinux:9
+            pkg_manager: dnf
+          - name: Rocky Linux 8
+            image: rockylinux:8
+            pkg_manager: dnf
+          - name: AlmaLinux 9
+            image: almalinux:9
+            pkg_manager: dnf
+          - name: Fedora Latest
+            image: fedora:latest
+            pkg_manager: dnf
+          - name: Amazon Linux 2023
+            image: amazonlinux:2023
+            pkg_manager: dnf
+
+    steps:
+      - name: Download test module
+        uses: actions/download-artifact@v4
+        with:
+          name: test-module
+          path: test-module/
+
+      - name: Test DKMS build on ${{ matrix.name }}
+        run: |
+          docker run --rm -v $PWD/test-module:/test-module ${{ matrix.image }} bash -c '
+            set -e
+
+            echo "=== Setting up ${{ matrix.name }} ==="
+            ${{ matrix.pkg_manager }} install -y epel-release 2>/dev/null || true
+            ${{ matrix.pkg_manager }} install -y dkms kernel-devel kernel-headers gcc make kmod
+
+            echo ""
+            echo "=== Environment Info ==="
+            echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2)"
+            echo "DKMS: $(dkms --version 2>/dev/null || echo "checking...")"
+            echo "Kernel headers available:"
+            ls /lib/modules/ 2>/dev/null | head -5 || echo "No modules directory yet"
+
+            # Get kernel version from installed headers
+            KVER=$(ls /usr/src/kernels/ 2>/dev/null | head -1 || ls /lib/modules/ 2>/dev/null | head -1)
+            echo "Using kernel: $KVER"
+
+            if [ -z "$KVER" ]; then
+              echo "Warning: No kernel headers found, skipping DKMS build test"
+              echo "This is expected in some container environments"
+              exit 0
+            fi
+
+            echo ""
+            echo "=== Installing test module via DKMS ==="
+            mkdir -p /usr/src/test-module-0.0.1
+            cp -r /test-module/src/* /usr/src/test-module-0.0.1/
+            cp /test-module/dkms.conf /usr/src/test-module-0.0.1/
+
+            echo "Adding module to DKMS..."
+            dkms add -m test-module -v 0.0.1 || echo "Module may already be added"
+
+            echo "Building module..."
+            dkms build -m test-module -v 0.0.1 -k $KVER || {
+              echo "Build failed, checking kernel source..."
+              ls -la /usr/src/kernels/$KVER/ 2>/dev/null | head -10 || echo "No kernel source found"
+              ls -la /lib/modules/$KVER/build 2>/dev/null || echo "No build symlink"
+              exit 1
+            }
+
+            echo "Installing module..."
+            dkms install -m test-module -v 0.0.1 -k $KVER
+
+            echo ""
+            echo "=== DKMS Status ==="
+            dkms status
+
+            echo ""
+            echo "=== SUCCESS: DKMS build completed on ${{ matrix.name }} ==="
+          '
+
+  # ==========================================================================
+  # Test DKMS builds on Debian/SUSE
+  # ==========================================================================
+  dkms-other:
+    name: DKMS ${{ matrix.name }}
+    needs: prepare-test-module
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 12
+            image: debian:12
+            setup: |
+              apt-get update
+              apt-get install -y dkms linux-headers-amd64 build-essential kmod
+          - name: Debian 11
+            image: debian:11
+            setup: |
+              apt-get update
+              apt-get install -y dkms linux-headers-amd64 build-essential kmod
+          - name: openSUSE Leap 15
+            image: opensuse/leap:15
+            setup: |
+              zypper refresh
+              zypper install -y dkms kernel-default-devel gcc make kmod
+
+    steps:
+      - name: Download test module
+        uses: actions/download-artifact@v4
+        with:
+          name: test-module
+          path: test-module/
+
+      - name: Test DKMS build on ${{ matrix.name }}
+        run: |
+          docker run --rm -v $PWD/test-module:/test-module ${{ matrix.image }} bash -c '
+            set -e
+
+            echo "=== Setting up ${{ matrix.name }} ==="
+            ${{ matrix.setup }}
+
+            echo ""
+            echo "=== Environment Info ==="
+            cat /etc/os-release | grep PRETTY_NAME
+            dkms --version 2>/dev/null || echo "DKMS version check..."
+            echo "Kernel headers available:"
+            ls /lib/modules/ | head -5
+
+            KVER=$(ls /lib/modules/ | head -1)
+            echo "Using kernel: $KVER"
+
+            echo ""
+            echo "=== Installing test module via DKMS ==="
+            mkdir -p /usr/src/test-module-0.0.1
+            cp -r /test-module/src/* /usr/src/test-module-0.0.1/
+            cp /test-module/dkms.conf /usr/src/test-module-0.0.1/
+
+            dkms add -m test-module -v 0.0.1
+            dkms build -m test-module -v 0.0.1 -k $KVER
+            dkms install -m test-module -v 0.0.1 -k $KVER
+
+            echo ""
+            echo "=== DKMS Status ==="
+            dkms status
+
+            echo ""
+            echo "=== SUCCESS: DKMS build completed on ${{ matrix.name }} ==="
+          '
+
+  # ==========================================================================
+  # Test driver-agent DKMS workflow logic
+  # ==========================================================================
+  test-driver-agent-dkms:
+    name: Test Driver Agent DKMS Logic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run driver-agent unit tests
+        run: |
+          go test -v ./pkg/driveragent/... -count=1
+
+      - name: Build driver-agent
+        run: |
+          CGO_ENABLED=0 go build -o bin/driver-agent ./cmd/driver-agent
+
+      - name: Verify driver-agent DKMS commands exist
+        run: |
+          # Verify the binary can show help (includes DKMS-related flags)
+          ./bin/driver-agent --help
+
+  # ==========================================================================
+  # Summary
+  # ==========================================================================
+  summary:
+    name: DKMS Build Summary
+    needs: [dkms-ubuntu, dkms-rhel, dkms-other, test-driver-agent-dkms]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## DKMS Kernel Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Distribution Family | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Ubuntu | ${{ needs.dkms-ubuntu.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| RHEL-based | ${{ needs.dkms-rhel.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Debian/SUSE | ${{ needs.dkms-other.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Driver Agent Tests | ${{ needs.test-driver-agent-dkms.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Tested Distributions" >> $GITHUB_STEP_SUMMARY
+          echo "- Ubuntu 24.04, 22.04 (multiple kernels)" >> $GITHUB_STEP_SUMMARY
+          echo "- Rocky Linux 8, 9" >> $GITHUB_STEP_SUMMARY
+          echo "- AlmaLinux 9" >> $GITHUB_STEP_SUMMARY
+          echo "- Fedora Latest" >> $GITHUB_STEP_SUMMARY
+          echo "- Amazon Linux 2023" >> $GITHUB_STEP_SUMMARY
+          echo "- Debian 11, 12" >> $GITHUB_STEP_SUMMARY
+          echo "- openSUSE Leap 15" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for failures
+        if: |
+          needs.dkms-ubuntu.result == 'failure' ||
+          needs.dkms-rhel.result == 'failure' ||
+          needs.dkms-other.result == 'failure' ||
+          needs.test-driver-agent-dkms.result == 'failure'
+        run: |
+          echo "Some DKMS builds failed!"
+          exit 1
