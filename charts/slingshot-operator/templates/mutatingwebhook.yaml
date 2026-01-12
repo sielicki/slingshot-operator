@@ -1,0 +1,40 @@
+{{- if .Values.webhook.sidecar.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "slingshot-operator.fullname" . }}-sidecar-injector
+  labels:
+    {{- include "slingshot-operator.labels" . | nindent 4 }}
+  annotations:
+    # cert-manager will inject the CA bundle
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "slingshot-operator.fullname" . }}-serving-cert
+webhooks:
+  - name: sidecar-injector.slingshot.hpe.com
+    clientConfig:
+      service:
+        name: {{ include "slingshot-operator.fullname" . }}-webhook
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-v1-pod
+    rules:
+      - operations:
+          - CREATE
+        apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - pods
+    # Only inject for namespaces that opt-in
+    namespaceSelector:
+      matchExpressions:
+        - key: slingshot.hpe.com/inject-sidecar
+          operator: In
+          values:
+            - "true"
+    failurePolicy: {{ .Values.webhook.sidecar.failurePolicy | default "Ignore" }}
+    sideEffects: None
+    admissionReviewVersions:
+      - v1
+    # Reinvocation policy for cases where other webhooks mutate the pod
+    reinvocationPolicy: IfNeeded
+{{- end }}

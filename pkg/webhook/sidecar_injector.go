@@ -168,6 +168,18 @@ func (s *SidecarInjector) injectSidecar(pod *corev1.Pod) *corev1.Pod {
 
 	sidecar := s.buildSidecarContainer(devices)
 
+	// Add the dev volume if not already present
+	if !s.hasDevVolume(injectedPod) {
+		injectedPod.Spec.Volumes = append(injectedPod.Spec.Volumes, corev1.Volume{
+			Name: "dev",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/dev",
+				},
+			},
+		})
+	}
+
 	if s.Config.UseNativeSidecar {
 		// K8s 1.28+ native sidecar: init container with restartPolicy: Always
 		// This starts before main containers, runs alongside them, and terminates after them
@@ -180,6 +192,15 @@ func (s *SidecarInjector) injectSidecar(pod *corev1.Pod) *corev1.Pod {
 	}
 
 	return injectedPod
+}
+
+func (s *SidecarInjector) hasDevVolume(pod *corev1.Pod) bool {
+	for _, vol := range pod.Spec.Volumes {
+		if vol.Name == "dev" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *SidecarInjector) findCXIDevices(pod *corev1.Pod) []string {
