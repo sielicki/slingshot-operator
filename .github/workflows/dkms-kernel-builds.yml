@@ -222,7 +222,10 @@ jobs:
             elif [ -f common/configs/config.mak.nic ]; then
               cp common/configs/config.mak.nic config.mak
             fi
-            make KDIR=$KDIR || {
+            # Skip git hooks setup - not needed for DKMS build
+            mkdir -p .git/hooks
+            touch .setup_done
+            make KDIR=$KDIR modules || {
               echo "SL build failed"
               exit 1
             }
@@ -342,7 +345,10 @@ jobs:
             elif [ -f common/configs/config.mak.nic ]; then
               cp common/configs/config.mak.nic config.mak
             fi
-            make KDIR=$KDIR || {
+            # Skip git hooks setup - not needed for DKMS build
+            mkdir -p .git/hooks
+            touch .setup_done
+            make KDIR=$KDIR modules || {
               echo "SL build failed"
               exit 1
             }
@@ -466,7 +472,10 @@ jobs:
             elif [ -f common/configs/config.mak.nic ]; then
               cp common/configs/config.mak.nic config.mak
             fi
-            make KDIR=$KDIR || {
+            # Skip git hooks setup - not needed for DKMS build
+            mkdir -p .git/hooks
+            touch .setup_done
+            make KDIR=$KDIR modules || {
               echo "SL build failed"
               exit 1
             }
