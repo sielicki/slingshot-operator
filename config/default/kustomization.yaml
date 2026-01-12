@@ -153,5 +153,19 @@ replacements:
           delimiter: '/'
           index: 1
           create: true
+  - source: # Issuer name reference in Certificate (handles namePrefix)
+      kind: Issuer
+      group: cert-manager.io
+      version: v1
+      name: selfsigned-issuer
+      fieldPath: .metadata.name
+    targets:
+      - select:
+          kind: Certificate
+          group: cert-manager.io
+          version: v1
+          name: serving-cert
+        fieldPaths:
+          - .spec.issuerRef.name
 # +kubebuilder:scaffold:crdkustomizecainjectionns
 # +kubebuilder:scaffold:crdkustomizecainjectionname
