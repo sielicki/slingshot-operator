@@ -76,46 +76,32 @@ jobs:
       - name: Prepare combined source archive
         run: |
           VERSION="${{ steps.get-version.outputs.version }}"
-          mkdir -p cxi-driver-$VERSION
 
-          # Copy driver sources
-          cp -r shs-cxi-driver/* cxi-driver-$VERSION/
+          # Create workspace with all repos as siblings
+          # The CXI driver expects deps at ../cassini-headers, ../slingshot_base_link, etc.
+          # relative to the shs-cxi-driver directory
+          mkdir -p cxi-workspace-$VERSION
 
-          # Place dependency sources where the build expects them
-          # SBL needs to be at ../slingshot_base_link relative to cxi-driver
-          cp -r ss-sbl cxi-driver-$VERSION/slingshot_base_link
+          # Copy each repo as a sibling
+          cp -r shs-cxi-driver cxi-workspace-$VERSION/shs-cxi-driver
+          cp -r ss-sbl cxi-workspace-$VERSION/slingshot_base_link
+          cp -r ss-link cxi-workspace-$VERSION/sl-driver
+          cp -r shs-cassini-headers cxi-workspace-$VERSION/cassini-headers
 
-          # SL driver needs to be at ../sl-driver relative to cxi-driver
-          cp -r ss-link cxi-driver-$VERSION/sl-driver
-
-          # Cassini headers need to be installed for SBL build
-          cp -r shs-cassini-headers cxi-driver-$VERSION/cassini-headers
-          # Create the install directory structure that SBL expects
-          mkdir -p cxi-driver-$VERSION/cassini-headers/install/include
-          # Copy all header directories maintaining structure
+          # Create the install directory structure that builds expect
+          mkdir -p cxi-workspace-$VERSION/cassini-headers/install/include
           if [ -d shs-cassini-headers/include ]; then
-            cp -r shs-cassini-headers/include/* cxi-driver-$VERSION/cassini-headers/install/include/
-          fi
-          # Some headers may be at top level
-          find shs-cassini-headers -maxdepth 2 -type d -name "sbl" -exec cp -r {} cxi-driver-$VERSION/cassini-headers/install/include/ \; 2>/dev/null || true
-          find shs-cassini-headers -maxdepth 2 -type d -name "cassini" -exec cp -r {} cxi-driver-$VERSION/cassini-headers/install/include/ \; 2>/dev/null || true
-
-          # SBL may have its own headers that need to be in the include path
-          if [ -d ss-sbl/include ]; then
-            cp -r ss-sbl/include/* cxi-driver-$VERSION/cassini-headers/install/include/
+            cp -r shs-cassini-headers/include/* cxi-workspace-$VERSION/cassini-headers/install/include/
           fi
 
-          # Debug: show what we have
-          echo "=== Cassini headers structure ==="
-          find cxi-driver-$VERSION/cassini-headers/install/include -type f -name "*.h" | head -20 || echo "No headers found"
-          echo "=== SBL source structure ==="
-          ls -la cxi-driver-$VERSION/slingshot_base_link/ | head -10
-          if [ -d cxi-driver-$VERSION/slingshot_base_link/include ]; then
-            find cxi-driver-$VERSION/slingshot_base_link/include -type f -name "*.h" | head -10
-          fi
+          # Debug: show structure
+          echo "=== Workspace structure ==="
+          ls -la cxi-workspace-$VERSION/
+          echo "=== Cassini headers ==="
+          find cxi-workspace-$VERSION/cassini-headers/install/include -type f -name "*.h" 2>/dev/null | head -10 || echo "No headers found"
 
           # Create the archive
-          tar -czf cxi-driver-$VERSION.tar.gz cxi-driver-$VERSION
+          tar -czf cxi-driver-$VERSION.tar.gz cxi-workspace-$VERSION
 
           ls -la cxi-driver-$VERSION.tar.gz
 
@@ -232,7 +218,14 @@ jobs:
 
             echo ""
             echo "=== Building CXI Driver ==="
-            cd /cxi-driver/drivers/net/ethernet/hpe/ss1
+
+            # Create symlinks at multiple levels to satisfy relative paths in CXI Makefile
+            # The Makefile uses ../slingshot_base_link from hpe/ and ../../../../../../../ from tests/
+            ln -sf /cxi-driver/slingshot_base_link /cxi-driver/shs-cxi-driver/drivers/net/ethernet/slingshot_base_link
+            ln -sf /cxi-driver/sl-driver /cxi-driver/shs-cxi-driver/drivers/net/ethernet/sl-driver
+            ln -sf /cxi-driver/cassini-headers /cxi-driver/shs-cxi-driver/drivers/net/ethernet/cassini-headers
+
+            cd /cxi-driver/shs-cxi-driver/drivers/net/ethernet/hpe/ss1
 
             # Export symbol paths for dependencies
             export KBUILD_EXTRA_SYMBOLS="/cxi-driver/slingshot_base_link/Module.symvers /cxi-driver/sl-driver/Module.symvers"
@@ -355,7 +348,13 @@ jobs:
 
             echo ""
             echo "=== Building CXI Driver ==="
-            cd /cxi-driver/drivers/net/ethernet/hpe/ss1
+
+            # Create symlinks at multiple levels to satisfy relative paths in CXI Makefile
+            ln -sf /cxi-driver/slingshot_base_link /cxi-driver/shs-cxi-driver/drivers/net/ethernet/slingshot_base_link
+            ln -sf /cxi-driver/sl-driver /cxi-driver/shs-cxi-driver/drivers/net/ethernet/sl-driver
+            ln -sf /cxi-driver/cassini-headers /cxi-driver/shs-cxi-driver/drivers/net/ethernet/cassini-headers
+
+            cd /cxi-driver/shs-cxi-driver/drivers/net/ethernet/hpe/ss1
             export KBUILD_EXTRA_SYMBOLS="/cxi-driver/slingshot_base_link/Module.symvers /cxi-driver/sl-driver/Module.symvers"
 
             make KDIR=$KDIR || {
@@ -482,7 +481,13 @@ jobs:
 
             echo ""
             echo "=== Building CXI Driver ==="
-            cd /cxi-driver/drivers/net/ethernet/hpe/ss1
+
+            # Create symlinks at multiple levels to satisfy relative paths in CXI Makefile
+            ln -sf /cxi-driver/slingshot_base_link /cxi-driver/shs-cxi-driver/drivers/net/ethernet/slingshot_base_link
+            ln -sf /cxi-driver/sl-driver /cxi-driver/shs-cxi-driver/drivers/net/ethernet/sl-driver
+            ln -sf /cxi-driver/cassini-headers /cxi-driver/shs-cxi-driver/drivers/net/ethernet/cassini-headers
+
+            cd /cxi-driver/shs-cxi-driver/drivers/net/ethernet/hpe/ss1
             export KBUILD_EXTRA_SYMBOLS="/cxi-driver/slingshot_base_link/Module.symvers /cxi-driver/sl-driver/Module.symvers"
 
             make KDIR=$KDIR || {
