@@ -109,7 +109,7 @@ WORKDIR /build
 # =============================================================================
 # Debian 12 (Bookworm)
 # =============================================================================
-FROM debian:12 AS debian12-dkms
+FROM debian:13 AS debian12-dkms
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     dkms \
