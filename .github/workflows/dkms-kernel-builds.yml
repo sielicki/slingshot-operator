@@ -106,7 +106,7 @@ jobs:
           ls -la cxi-driver-$VERSION.tar.gz
 
       - name: Upload driver sources
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cxi-driver-sources
           path: cxi-driver-*.tar.gz
