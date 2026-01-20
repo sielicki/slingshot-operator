@@ -60,7 +60,7 @@ jobs:
           go build -a -ldflags="-s -w" -o retry-handler-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/retry-handler
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: retry-handler-${{ matrix.goos }}-${{ matrix.goarch }}
           path: retry-handler-${{ matrix.goos }}-${{ matrix.goarch }}
