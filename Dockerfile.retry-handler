@@ -7,7 +7,7 @@ ARG BASE_IMAGE=ubuntu:24.04
 # =============================================================================
 # Stage 1a: Build cxi_rh from shs-libcxi (Alpine)
 # =============================================================================
-FROM alpine:3.21 AS cxi-builder-alpine
+FROM alpine:3.23 AS cxi-builder-alpine
 
 ARG LIBCXI_VERSION=main
 ARG LIBCXI_REPO=https://github.com/HewlettPackard/shs-libcxi.git
@@ -148,7 +148,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 # =============================================================================
 # Stage 3a: Runtime image (Alpine)
 # =============================================================================
-FROM alpine:3.21 AS runtime-alpine
+FROM alpine:3.23 AS runtime-alpine
 
 RUN apk add --no-cache \
     libconfig \
